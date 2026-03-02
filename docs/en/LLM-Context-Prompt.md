@@ -38,7 +38,8 @@ Internal TLS Certificate Portal
 3) Revoke rule: certificates issued over 7 days ago cannot be revoked
 4) Expiry rule in overview: if explicit expiry is missing, compute cert_created_at + 730 days (365*2)
 5) If certificate file is missing, download action must be disabled with clear hint
-6) Version badge must be visible at bottom-right (public/version.js)
+6) Status update logic: When a new request for the same VID is made, old certificates are marked "updated" (hidden by default in UI/emails)
+7) Version badge must be visible at bottom-right (public/version.js)
 
 [Quality Requirements]
 - Do not change existing business rules unless explicitly requested
