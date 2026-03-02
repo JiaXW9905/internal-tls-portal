@@ -980,6 +980,20 @@ ${certs.map(c => {
           customerName, productSku, vid, finalRequesterName, req.session.user.email,
           REQUEST_STATUS_PENDING, finalRequestType, now
         );
+
+        // Notify all developers about the new request
+        try {
+          const devs = await db.all("SELECT email FROM users WHERE role = ?", [ROLE_DEV]);
+          if (devs && devs.length > 0) {
+            const devEmails = devs.map((d) => d.email).join(",");
+            const subject = `[TLS Portal] 证书申请新通知 - VID: ${vid}`;
+            const text = `研发团队您好：\n\n系统收到了一份新的证书申请。\n申请人：${finalRequesterName} (${req.session.user.email})\nVID：${vid}\n\n请尽快登录系统进行审核与签发操作：\n${process.env.APP_URL || "http://localhost:52344"}`;
+            await sendMail(devEmails, subject, text);
+          }
+        } catch (mailErr) {
+          console.error("[Mail] Failed to notify devs for new request:", mailErr);
+        }
+
         return res.json({ id: result.lastID });
       }
     );
@@ -1076,6 +1090,18 @@ ${certs.map(c => {
         );
 
         await db.run("UPDATE requests SET status = ?, issued_at = ? WHERE id = ?", [REQUEST_STATUS_ISSUED, now, req.params.id]);
+
+        // Notify the applicant that the certificate is ready
+        try {
+          if (row.requester_email) {
+            const subject = `[TLS Portal] 证书已签发 - VID: ${row.vid}`;
+            const text = `您好，${row.requester_name}：\n\n您申请的证书（VID: ${row.vid}）已经由研发团队完成签发并上传。\n\n出于安全考虑，证书文件与解压密码不在邮件中发送，请登录系统获取：\n${process.env.APP_URL || "http://localhost:52344"}`;
+            await sendMail(row.requester_email, subject, text);
+          }
+        } catch (mailErr) {
+          console.error("[Mail] Failed to notify applicant for issued certificate:", mailErr);
+        }
+
         return res.json({ ok: true });
       }
     );
