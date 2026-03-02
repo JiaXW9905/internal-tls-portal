@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>注册 - TLS 门户</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="auth-page">
+    <header>
+      <h1>注册</h1>
+      <p>请使用 @shengwang.cn 邮箱创建账号。</p>
+    </header>
+    <main>
+      <section class="panel">
+        <form id="register-form">
+          <div class="grid">
+            <div>
+              <label for="name">姓名</label>
+              <input id="name" name="name" required />
+            </div>
+            <div>
+              <label for="email">邮箱</label>
+              <input id="email" name="email" type="email" required />
+            </div>
+            <div>
+              <label for="code">验证码</label>
+              <input id="code" name="code" required />
+            </div>
+          </div>
+          <div class="actions">
+            <button id="send-code" type="button">发送验证码</button>
+          </div>
+          <button type="submit">注册</button>
+          <div id="register-message" class="muted"></div>
+        </form>
+        <p class="muted">初始密码为：123456。</p>
+        <p class="muted">
+          已有账号？<a href="/login">去登录</a>。
+        </p>
+      </section>
+    </main>
+    <script src="/version.js"></script>
+    <script src="/register.js"></script>
+  </body>
+</html>

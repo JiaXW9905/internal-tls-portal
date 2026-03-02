@@ -1,0 +1,19 @@
+# 基础镜像 - 预装所有依赖
+FROM node:18-bullseye
+
+WORKDIR /app
+
+# 设置国内 npm 镜像加速
+RUN npm config set registry https://registry.npmmirror.com
+
+# 复制 package 文件
+COPY package*.json ./
+
+# 安装所有依赖（这一步会缓存到镜像中）
+RUN npm install --omit=dev
+
+# 创建数据目录
+RUN mkdir -p /app/data /app/uploads
+
+# 注意：这个镜像只包含依赖，不包含业务代码
+# 业务代码会在最终镜像中通过 COPY 添加

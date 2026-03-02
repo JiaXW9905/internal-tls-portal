@@ -1,0 +1,9 @@
+node_modules/
+data/
+uploads/
+*.log
+.DS_Store
+.tmp_py/
+internal-tls-portal-*.tar.gz
+deploy/env.prod
+deploy/env.dev

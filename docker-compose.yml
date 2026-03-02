@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  internal-tls-portal:
+    build: .
+    ports:
+      - "52344:52344"
+    env_file:
+      - ./deploy/env.prod
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    restart: unless-stopped

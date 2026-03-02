@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>用户与权限</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">TLS 证书门户</div>
+          <div class="brand-subtitle">内部使用</div>
+        </div>
+        <nav class="nav">
+          <a id="nav-requests" href="/">证书申请</a>
+          <a id="nav-admin" href="/admin">证书签发</a>
+          <a id="nav-overview" href="/overview">证书总览</a>
+          <a id="nav-users" href="/users" class="active">用户与权限</a>
+          <a id="nav-settings" href="/settings" style="display: none;">系统设置</a>
+        </nav>
+      </aside>
+      <div class="content">
+        <header>
+          <div class="header-row">
+            <div>
+              <h1>用户与权限</h1>
+              <p>管理用户角色、邮箱验证、强制改密与删除用户。</p>
+            </div>
+            <div class="user-menu" id="user-menu">
+              <button id="user-menu-btn" type="button"></button>
+              <div class="user-menu-dropdown" id="user-menu-dropdown">
+                <a href="/account">账号管理</a>
+                <button id="logout-btn" type="button">退出登录</button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <main>
+          <section class="panel">
+            <h2>用户列表</h2>
+            <div class="table-wrap">
+              <table class="table" id="users-table">
+                <thead>
+                  <tr>
+                    <th>姓名</th>
+                    <th>邮箱</th>
+                    <th>邮箱验证</th>
+                    <th>角色</th>
+                    <th class="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="users-message" class="muted"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/version.js"></script>
+    <script src="/modal.js"></script>
+    <script src="/users.js"></script>
+  </body>
+</html>

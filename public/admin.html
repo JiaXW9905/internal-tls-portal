@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>证书签发</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">TLS 证书门户</div>
+          <div class="brand-subtitle">内部使用</div>
+        </div>
+        <nav class="nav">
+          <a id="nav-requests" href="/">证书申请</a>
+          <a id="nav-admin" href="/admin" class="active">证书签发</a>
+          <a id="nav-overview" href="/overview">证书总览</a>
+          <a id="nav-users" href="/users" style="display: none;">用户与权限</a>
+          <a id="nav-settings" href="/settings" style="display: none;">系统设置</a>
+        </nav>
+      </aside>
+      <div class="content">
+        <header>
+          <div class="header-row">
+            <div>
+              <h1>证书签发</h1>
+              <p>审核申请并上传已签发的证书包。</p>
+            </div>
+            <div class="user-menu" id="user-menu">
+              <button id="user-menu-btn" type="button"></button>
+              <div class="user-menu-dropdown" id="user-menu-dropdown">
+                <a href="/account">账号管理</a>
+                <button id="logout-btn" type="button">退出登录</button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <main>
+          <section class="panel">
+            <h2>待处理申请</h2>
+            <div id="pending-list" class="grid"></div>
+            <div id="pending-message" class="muted"></div>
+          </section>
+
+          <section class="panel">
+            <h2>最近已签发</h2>
+            <div class="table-wrap">
+              <table class="table" id="issued-table">
+                <thead>
+                  <tr>
+                    <th>客户名称</th>
+                    <th>SKU</th>
+                    <th>VID</th>
+                    <th>申请人</th>
+                    <th>签发时间</th>
+                    <th>解压密码</th>
+                    <th class="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/version.js"></script>
+    <script src="/modal.js"></script>
+    <script src="/admin.js"></script>
+  </body>
+</html>

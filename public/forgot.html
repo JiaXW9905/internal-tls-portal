@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>找回密码 - TLS 门户</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="auth-page">
+    <header>
+      <h1>找回密码</h1>
+      <p>通过邮箱验证码重置密码。</p>
+    </header>
+    <main>
+      <section class="panel">
+        <form id="reset-form">
+          <div class="grid">
+            <div>
+              <label for="email">邮箱</label>
+              <input id="email" name="email" type="email" required />
+            </div>
+            <div>
+              <label for="code">验证码</label>
+              <input id="code" name="code" required />
+            </div>
+            <div>
+              <label for="newPassword">新密码</label>
+              <input id="newPassword" name="newPassword" type="password" required />
+            </div>
+          </div>
+          <div class="actions">
+            <button id="send-code" type="button">发送验证码</button>
+          </div>
+          <button type="submit">重置密码</button>
+          <div id="reset-message" class="muted"></div>
+        </form>
+        <p class="muted">
+          想起来了？<a href="/login">返回登录</a>。
+        </p>
+      </section>
+    </main>
+    <script src="/version.js"></script>
+    <script src="/forgot.js"></script>
+  </body>
+</html>

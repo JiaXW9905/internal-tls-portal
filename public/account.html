@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>账号管理</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">TLS 证书门户</div>
+          <div class="brand-subtitle">内部使用</div>
+        </div>
+        <nav class="nav">
+          <a id="nav-requests" href="/">证书申请</a>
+          <a id="nav-admin" href="/admin" style="display: none;">证书签发</a>
+          <a id="nav-overview" href="/overview" style="display: none;">证书总览</a>
+          <a id="nav-users" href="/users" style="display: none;">用户与权限</a>
+          <a id="nav-account" href="/account" class="active">账号管理</a>
+        </nav>
+      </aside>
+      <div class="content">
+        <header>
+          <div class="header-row">
+            <div>
+              <h1>账号管理</h1>
+              <p>修改密码、查看当前账号信息。</p>
+            </div>
+            <div class="user-menu" id="user-menu">
+              <button id="user-menu-btn" type="button"></button>
+              <div class="user-menu-dropdown" id="user-menu-dropdown">
+                <a href="/account">账号管理</a>
+                <button id="logout-btn" type="button">退出登录</button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <main>
+          <section class="panel">
+            <h2>修改密码</h2>
+            <form id="change-password-form">
+              <div class="grid">
+                <div>
+                  <label for="currentPassword">当前密码</label>
+                  <input id="currentPassword" name="currentPassword" type="password" required />
+                </div>
+                <div>
+                  <label for="newPassword">新密码</label>
+                  <input id="newPassword" name="newPassword" type="password" required />
+                </div>
+              </div>
+              <button type="submit">保存</button>
+              <div id="change-password-message" class="muted"></div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h2>忘记密码？</h2>
+            <p class="muted">如果你无法记起当前密码，请前往找回密码页面。</p>
+            <div class="actions">
+              <a href="/forgot">找回密码</a>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/version.js"></script>
+    <script src="/account.js"></script>
+  </body>
+</html>

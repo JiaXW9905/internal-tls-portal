@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登录 - TLS 门户</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="auth-page">
+    <header>
+      <h1>登录</h1>
+      <p>请使用 @shengwang.cn 邮箱访问门户。</p>
+    </header>
+    <main>
+      <section class="panel">
+        <form id="login-form">
+          <div class="grid">
+            <div>
+              <label for="email">邮箱</label>
+              <input id="email" name="email" type="email" required />
+            </div>
+            <div>
+              <label for="password">密码</label>
+              <input id="password" name="password" type="password" required />
+            </div>
+          </div>
+          <button type="submit">登录</button>
+          <div id="login-message" class="muted"></div>
+        </form>
+        <p class="muted">
+          没有账号？<a href="/register">去注册</a>。
+        </p>
+        <p class="muted">
+          忘记密码？<a href="/forgot">找回密码</a>。
+        </p>
+      </section>
+    </main>
+    <script src="/version.js"></script>
+    <script src="/login.js"></script>
+  </body>
+</html>
