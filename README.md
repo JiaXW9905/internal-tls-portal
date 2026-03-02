@@ -3,7 +3,7 @@
 Internal web portal for TLS certificate request, issuance, download, and lifecycle overview.
 
 ## Current Version
-- App version: `0.9.8.1` (will be bumped with each release)
+- App version: `0.9.8.3` (will be bumped with each release)
 - Runtime port: `52344`
 
 ## Tech Stack

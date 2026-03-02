@@ -9,7 +9,7 @@ This runbook is for future developers and operators. It covers:
 - day-to-day operations
 - troubleshooting
 
-Current baseline: `0.9.8.1`
+Current baseline: `0.9.8.3`
 
 ---
 
@@ -74,7 +74,7 @@ Production notes:
 ```bash
 bash deploy/package.sh
 ```
-Output example: `internal-tls-portal-0.9.8.1.tar.gz`
+Output example: `internal-tls-portal-0.9.8.3.tar.gz`
 
 ### 5.2 Dependency packaging behavior
 - If local `node_modules` exists, tarball includes dependencies (faster server build).

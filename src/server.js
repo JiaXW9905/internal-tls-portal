@@ -553,6 +553,12 @@ ${certs.map(c => {
         payload.devCode = code;
       }
       console.log(`[verify] ${normalizedEmail} code: ${code} (exp: ${exp})`);
+
+      // 发送验证码邮件
+      const subject = `[TLS Portal] 您的注册验证码`;
+      const text = `您好，\n\n您的注册验证码为：${code}\n该验证码在 ${verificationMinutes} 分钟内有效。\n\n如非本人操作，请忽略此邮件。`;
+      await sendMail(normalizedEmail, subject, text);
+
       return res.json(payload);
     });
 
@@ -585,6 +591,12 @@ ${certs.map(c => {
         payload.devCode = code;
       }
       console.log(`[reset] ${normalizedEmail} code: ${code} (exp: ${exp})`);
+
+      // 发送验证码邮件
+      const subject = `[TLS Portal] 您的密码重置验证码`;
+      const text = `您好，\n\n您正在申请重置密码，验证码为：${code}\n该验证码在 ${verificationMinutes} 分钟内有效。\n\n如非本人操作，请忽略此邮件。`;
+      await sendMail(normalizedEmail, subject, text);
+
       return res.json(payload);
     });
 

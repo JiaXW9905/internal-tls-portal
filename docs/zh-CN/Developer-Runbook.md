@@ -9,7 +9,7 @@
 - 日常运维
 - 常见故障排查
 
-当前基线版本：`0.9.8.1`
+当前基线版本：`0.9.8.3`
 
 ---
 
@@ -75,7 +75,7 @@ docker-compose down
 ```bash
 bash deploy/package.sh
 ```
-输出示例：`internal-tls-portal-0.9.8.1.tar.gz`
+输出示例：`internal-tls-portal-0.9.8.3.tar.gz`
 
 ### 5.2 重要说明（依赖打包策略）
 - 若本地存在 `node_modules`，安装包会包含依赖，服务器构建更快。
