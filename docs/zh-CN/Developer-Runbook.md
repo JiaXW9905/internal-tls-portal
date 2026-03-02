@@ -1,4 +1,4 @@
-# Internal TLS Portal 开发与运维快速上手（Runbook）
+# 产业互联网内部门户 开发与运维快速上手（Runbook）
 
 ## 1. 目标与适用范围
 本文档面向后续开发/运维人员，覆盖：
@@ -7,9 +7,10 @@
 - 发布打包
 - 升级与回滚
 - 日常运维
+- RBAC权限管理
 - 常见故障排查
 
-当前基线版本：`0.9.8.3`
+当前基线版本：`1.0.0`
 
 ---
 
@@ -195,7 +196,87 @@ docker-compose top
 
 ---
 
-## 10. 数据维护与清理
+## 10. RBAC权限管理（v1.0新增）
+
+### 10.1 查看用户权限
+
+```bash
+# 查看用户的角色
+sqlite3 data/app.db "
+SELECT u.email, r.name as role_name, r.code 
+FROM user_roles ur 
+JOIN users u ON ur.user_id = u.id 
+JOIN roles r ON ur.role_id = r.id 
+WHERE u.email = 'user@shengwang.cn';
+"
+
+# 查看用户的权限列表
+sqlite3 data/app.db "
+SELECT p.code, p.name, p.action 
+FROM user_roles ur 
+JOIN role_permissions rp ON ur.role_id = rp.role_id 
+JOIN permissions p ON rp.permission_id = p.id 
+JOIN users u ON ur.user_id = u.id 
+WHERE u.email = 'user@shengwang.cn';
+"
+```
+
+### 10.2 手工授予角色
+
+```bash
+# 授予用户TLS服务角色
+sqlite3 data/app.db "
+INSERT INTO user_roles (user_id, role_id, granted_at)
+SELECT u.id, r.id, datetime('now')
+FROM users u, roles r
+WHERE u.email = 'user@shengwang.cn'
+AND r.code = 'tls-service';
+"
+```
+
+### 10.3 查看服务访问日志
+
+```bash
+# 查看最近的访问日志
+sqlite3 data/app.db "
+SELECT u.email, s.name, sal.action, sal.result, sal.created_at
+FROM service_access_logs sal
+JOIN users u ON sal.user_id = u.id
+JOIN portal_services s ON sal.service_id = s.id
+ORDER BY sal.created_at DESC
+LIMIT 20;
+"
+
+# 查看权限拒绝记录
+sqlite3 data/app.db "
+SELECT u.email, sal.action, sal.created_at
+FROM service_access_logs sal
+JOIN users u ON sal.user_id = u.id
+WHERE sal.result = 'denied'
+ORDER BY sal.created_at DESC
+LIMIT 10;
+"
+```
+
+### 10.4 清理审计日志
+
+```bash
+# 清理30天前的访问日志
+sqlite3 data/app.db "
+DELETE FROM service_access_logs 
+WHERE created_at < datetime('now', '-30 days');
+"
+
+# 清理90天前的权限变更日志
+sqlite3 data/app.db "
+DELETE FROM permission_audit_logs 
+WHERE created_at < datetime('now', '-90 days');
+"
+```
+
+---
+
+## 11. 数据维护与清理
 
 清理证书业务数据（保留用户和系统设置）：
 ```bash
@@ -205,15 +286,36 @@ node deploy/clear-all-certificates.js
 
 ---
 
-## 11. 发布前检查清单（Go-Live Checklist）
+## 12. 发布前检查清单（Go-Live Checklist）
+
+### 基础检查
 - [ ] `CHANGELOG.md` 已更新
 - [ ] `package.json` 与 `public/version.js` 版本一致
 - [ ] `deploy/env.prod` 参数正确（尤其 `SESSION_SECRET`）
 - [ ] 完成数据库与上传目录备份
+
+### 功能检查
+- [ ] 门户首页正常显示
+- [ ] 服务导航正常工作
 - [ ] 核心流程冒烟测试通过（登录、申请、签发、下载、总览）
-- [ ] 权限校验通过（admin/dev/service/product）
+- [ ] 分层级侧边栏展开/折叠正常
+
+### 权限检查
+- [ ] RBAC表结构正确创建（8张表）
+- [ ] 用户角色正确迁移
+- [ ] 权限校验通过（tls-admin/tls-dev/tls-service/tls-product）
+- [ ] 门户API正常返回数据
+
+### 兼容性检查
+- [ ] 旧API路径仍可访问
+- [ ] TLS所有功能保持正常
 - [ ] 升级与回滚路径已验证
-- [ ] 发布后检查 `api/health`、错误日志、版本角标
+
+### 发布后检查
+- [ ] `api/health` 返回正常
+- [ ] 错误日志无异常
+- [ ] 版本角标显示 1.0.0
+- [ ] 权限审计日志正常记录
 
 ---
 

@@ -9,6 +9,8 @@ const nodemailer = require("nodemailer");
 const cron = require("node-cron");
 const { initDb } = require("./db");
 const changelogData = require("./changelog-data");
+const { RBACManager } = require("./rbac-manager");
+const { createRBACMiddleware } = require("./rbac-middleware");
 
 const app = express();
 const port = process.env.PORT || 52344;
@@ -80,6 +82,17 @@ app.get("/api/changelog", (req, res) => {
 
 initDb()
   .then((db) => {
+    // 初始化RBAC管理器
+    const rbacManager = new RBACManager(db);
+    const {
+      requirePermission,
+      requireServiceAccess,
+      requireRole,
+      requireAdmin,
+      attachUserPermissions,
+      debugPermissions
+    } = createRBACMiddleware(rbacManager);
+
     const adminEmail =
       (process.env.ADMIN_EMAIL || "").trim().toLowerCase() || null;
     const defaultAdminEmail = "wangjiaxin@shengwang.cn";
@@ -479,6 +492,9 @@ ${certs.map(c => {
       return user.isAdmin ? ROLE_ADMIN : ROLE_SERVICE;
     }
 
+    // requireAdmin 和 requireRole 现在由 RBAC 中间件提供
+    // 原有实现已被注释，使用 createRBACMiddleware 返回的版本
+    /*
     function requireAdmin(req, res, next) {
       if (!req.session.user || getRole(req.session.user) !== ROLE_ADMIN) {
         return res.status(403).json({ error: "Admin only" });
@@ -486,6 +502,9 @@ ${certs.map(c => {
       return next();
     }
 
+    */
+    // requireRole 现在也由 RBAC 中间件提供
+    /*
     function requireRole(roles) {
       return (req, res, next) => {
         if (!req.session.user) {
@@ -498,6 +517,7 @@ ${certs.map(c => {
         return next();
       };
     }
+    */
 
     function isAllowedEmail(email) {
       return email.toLowerCase().endsWith("@shengwang.cn");
@@ -525,6 +545,146 @@ ${certs.map(c => {
       if (envType) return envType !== "prod";
       return process.env.NODE_ENV !== "production";
     }
+
+    // ============================================
+    // Portal APIs - 门户相关接口
+    // ============================================
+
+    /**
+     * 获取用户可访问的服务列表
+     */
+    app.get("/api/portal/services", requireAuth, async (req, res) => {
+      try {
+        const userId = req.session.user.id;
+        const services = await rbacManager.getUserServices(userId);
+        return res.json(services);
+      } catch (err) {
+        console.error("[Portal] Failed to get user services:", err);
+        return res.status(500).json({ error: "Failed to load services" });
+      }
+    });
+
+    /**
+     * 获取用户在某个服务的权限和角色
+     */
+    app.get("/api/portal/services/:serviceId/permissions", requireAuth, async (req, res) => {
+      try {
+        const userId = req.session.user.id;
+        const { serviceId } = req.params;
+        
+        const permissions = await rbacManager.getUserServicePermissions(userId, serviceId);
+        const roles = await rbacManager.getUserServiceRoles(userId, serviceId);
+        
+        return res.json({ 
+          permissions: permissions.map(p => ({
+            code: p.code,
+            name: p.name,
+            action: p.action,
+            resourceType: p.resource_type
+          })),
+          roles: roles.map(r => ({
+            code: r.code,
+            name: r.name,
+            description: r.description
+          }))
+        });
+      } catch (err) {
+        console.error("[Portal] Failed to get user permissions:", err);
+        return res.status(500).json({ error: "Failed to load permissions" });
+      }
+    });
+
+    /**
+     * 获取所有服务列表（管理员）
+     */
+    app.get("/api/portal/admin/services", requireAdmin, async (req, res) => {
+      try {
+        const services = await rbacManager.getAllServices(false);
+        return res.json(services);
+      } catch (err) {
+        console.error("[Portal] Failed to get all services:", err);
+        return res.status(500).json({ error: "Failed to load services" });
+      }
+    });
+
+    /**
+     * 获取服务的所有角色
+     */
+    app.get("/api/portal/services/:serviceId/roles", requireAdmin, async (req, res) => {
+      try {
+        const { serviceId } = req.params;
+        const roles = await rbacManager.getServiceRoles(serviceId);
+        return res.json(roles);
+      } catch (err) {
+        console.error("[Portal] Failed to get service roles:", err);
+        return res.status(500).json({ error: "Failed to load roles" });
+      }
+    });
+
+    /**
+     * 授予用户角色
+     */
+    app.post("/api/portal/users/:userId/roles", requireAdmin, async (req, res) => {
+      try {
+        const userId = parseInt(req.params.userId);
+        const { roleCode, expiresAt, reason } = req.body;
+        const operatorId = req.session.user.id;
+        
+        if (!roleCode) {
+          return res.status(400).json({ error: "Role code is required" });
+        }
+        
+        const roleId = await rbacManager.getRoleIdByCode(roleCode);
+        if (!roleId) {
+          return res.status(404).json({ error: "Role not found" });
+        }
+        
+        await rbacManager.grantRole(userId, roleId, operatorId, expiresAt, reason);
+        return res.json({ ok: true });
+      } catch (err) {
+        console.error("[Portal] Failed to grant role:", err);
+        return res.status(500).json({ error: "Failed to grant role" });
+      }
+    });
+
+    /**
+     * 撤销用户角色
+     */
+    app.delete("/api/portal/users/:userId/roles/:roleCode", requireAdmin, async (req, res) => {
+      try {
+        const userId = parseInt(req.params.userId);
+        const { roleCode } = req.params;
+        const { reason } = req.body;
+        const operatorId = req.session.user.id;
+        
+        const roleId = await rbacManager.getRoleIdByCode(roleCode);
+        if (!roleId) {
+          return res.status(404).json({ error: "Role not found" });
+        }
+        
+        await rbacManager.revokeRole(userId, roleId, operatorId, reason);
+        return res.json({ ok: true });
+      } catch (err) {
+        console.error("[Portal] Failed to revoke role:", err);
+        return res.status(500).json({ error: "Failed to revoke role" });
+      }
+    });
+
+    /**
+     * 获取用户权限变更历史
+     */
+    app.get("/api/portal/users/:userId/permission-history", requireAdmin, async (req, res) => {
+      try {
+        const userId = parseInt(req.params.userId);
+        const limit = parseInt(req.query.limit) || 50;
+        
+        const history = await rbacManager.getUserPermissionHistory(userId, limit);
+        return res.json(history);
+      } catch (err) {
+        console.error("[Portal] Failed to get permission history:", err);
+        return res.status(500).json({ error: "Failed to load history" });
+      }
+    });
 
     // --- Auth Routes ---
 
@@ -922,6 +1082,13 @@ ${certs.map(c => {
       return res.json({ ok: true });
     });
 
+    // ============================================
+    // TLS Service API Namespace (新API路由)
+    // ============================================
+    // 注意：为了向后兼容，我们暂时保持旧路由不变
+    // 新的 /api/tls/* 路由将在后续版本中逐步添加
+    // 当前版本使用路由重定向实现兼容
+
     // --- Request Routes ---
 
     async function fetchRequestsWithActiveCert(whereClause, params, limitOffset = "") {
@@ -1287,7 +1454,21 @@ ${certs.map(c => {
       if (role !== ROLE_ADMIN) return res.status(403).send("Admin only");
       res.sendFile(path.join(__dirname, "..", "public", "settings.html"));
     });
+    // Portal Home - 必须在 / 路由之前定义
+    app.get("/portal", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "portal-home.html"));
+    });
+
     app.get("/", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      
+      // 默认重定向到门户首页
+      return res.redirect("/portal");
+    });
+
+    // TLS服务路由（保持向后兼容）
+    app.get("/tls", (req, res) => {
       if (!req.session.user) return res.redirect("/login");
       const role = getRole(req.session.user);
       if (role === ROLE_DEV) return res.redirect("/admin");

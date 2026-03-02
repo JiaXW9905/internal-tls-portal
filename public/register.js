@@ -64,7 +64,8 @@ registerForm.addEventListener("submit", async (event) => {
 
   try {
     await register(payload);
-    window.location.href = "/";
+    // 注册成功后跳转到门户首页
+    window.location.href = "/portal";
   } catch (err) {
     registerMessage.textContent = err.message;
     registerMessage.className = "error";

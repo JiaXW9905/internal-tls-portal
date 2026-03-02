@@ -1,4 +1,4 @@
-# Internal TLS Portal - LLM 快速上下文提示词（中文）
+# 产业互联网内部门户 - LLM 快速上下文提示词（中文）
 
 ## 1. 使用说明
 本文件用于在切换模型或新开会话时，快速让 LLM 获得必要上下文。  
@@ -135,21 +135,25 @@ Internal TLS Certificate Portal
 
 ```text
 你是该项目的协作工程师，请基于以下上下文工作：
-- 项目：Internal TLS Certificate Portal
-- 技术：Node.js + Express + SQLite + Docker
+- 项目：产业互联网内部门户 v1.0.0
+- 技术：Node.js + Express + SQLite + RBAC + Docker
+- 架构：门户 + 多服务 + 细粒度权限
 - 关键规则：
-  1) admin/dev 默认仅可见自己相关数据
-  2) 签发超过7天不可撤销
-  3) 无过期时间时按 cert_created_at + 730天计算
-  4) 文件缺失时下载不可操作
-  5) 页面右下角显示版本角标
+  1) TLS服务：tls-admin/tls-dev 默认仅可见自己相关数据
+  2) TLS服务：签发超过7天不可撤销
+  3) TLS服务：无过期时间时按 cert_created_at + 730天计算
+  4) TLS服务：文件缺失时下载不可操作
+  5) RBAC：权限命名格式 {service}:{resource}:{action}
+  6) RBAC：所有权限变更需审计
+  7) 门户：分层级可展开菜单
 
-现在任务：修复“证书总览分页数量不正确”的问题。
+现在任务：[填写具体任务]
 
 要求：
 - 先给定位结论和最小改动方案，再给代码修改建议
 - 输出必须包含：变更点、风险、验证步骤、回滚建议
 - 全程中文，简洁明确
+- 涉及权限变更时，说明RBAC表影响
 ```
 
 ---

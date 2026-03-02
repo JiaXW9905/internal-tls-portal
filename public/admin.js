@@ -229,6 +229,11 @@ async function init() {
   try {
     const me = await fetchJson("/api/me");
     if (!me) return;
+    
+    // 渲染侧边栏导航
+    if (typeof renderSidebarNav === 'function') {
+      renderSidebarNav('sidebar-nav', window.location.pathname, me);
+    }
     initUserMenu(me);
     const role = me.role || (me.isAdmin ? "admin" : "service");
     if (role === "service") {

@@ -99,6 +99,159 @@ body {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+/* ============================================
+   导航菜单 - 支持分层级展开/折叠
+   ============================================ */
+
+/* 导航项（一级菜单） */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #94a3b8;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.nav-item.active {
+  background-color: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+/* 导航图标 */
+.nav-icon {
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.nav-label {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+/* 导航分组容器 */
+.nav-group {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+/* 导航分组头部（可点击展开/折叠） */
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #94a3b8;
+  padding: 10px 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.nav-group-header:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* 展开/折叠箭头 */
+.nav-arrow {
+  margin-left: auto;
+  font-size: 0.7rem;
+  transition: transform 0.3s ease;
+}
+
+.nav-group.expanded .nav-arrow {
+  transform: rotate(180deg);
+}
+
+/* 子菜单容器 */
+.nav-group-items {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  margin-top: 4px;
+}
+
+.nav-group.expanded .nav-group-items {
+  max-height: 500px; /* 足够大的值 */
+}
+
+/* 子菜单项 */
+.nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  text-decoration: none;
+  padding: 8px 16px 8px 48px; /* 增加左侧缩进 */
+  border-radius: 6px;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.nav-subitem::before {
+  content: '';
+  position: absolute;
+  left: 32px; /* 调整圆点位置 */
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #475569;
+  transform: translateY(-50%);
+  transition: all 0.2s ease;
+}
+
+.nav-subitem:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  padding-left: 50px; /* 悬停时增加缩进 */
+}
+
+.nav-subitem:hover::before {
+  background-color: #3b82f6;
+  width: 6px;
+  height: 6px;
+}
+
+.nav-subitem.active {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  font-weight: 500;
+  border-left: 3px solid var(--primary-color);
+  padding-left: 45px; /* 活跃状态缩进 */
+}
+
+.nav-subitem.active::before {
+  background-color: var(--primary-color);
+  width: 6px;
+  height: 6px;
+}
+
+/* 旧的导航组样式（向后兼容，可以保留） */
+.nav-group-title {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 16px 4px;
+  margin-bottom: 4px;
+}
+
 /* Content Area */
 .content {
   flex: 1;

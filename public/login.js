@@ -24,7 +24,8 @@ loginForm.addEventListener("submit", async (event) => {
 
   try {
     await login(payload);
-    window.location.href = "/";
+    // 登录成功后跳转到门户首页
+    window.location.href = "/portal";
   } catch (err) {
     loginMessage.textContent = err.message;
     loginMessage.className = "error";

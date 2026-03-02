@@ -3,6 +3,7 @@ const fs = require("fs");
 const readline = require("readline");
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
+const { RBACManager } = require("./rbac-manager");
 
 const dataDir = path.join(__dirname, "..", "data");
 const dbPath = path.join(dataDir, "app.db");
@@ -129,7 +130,56 @@ async function initDb() {
   await migrateLegacyCertificates(db);
   await markLegacyExpiredCertificatesAsUpdated(db);
 
+  // 初始化RBAC系统
+  await initRBACSystem(db);
+
   return db;
+}
+
+async function initRBACSystem(db) {
+  console.log("[RBAC] Checking RBAC system initialization...");
+  
+  // 检查RBAC表是否已存在
+  const tableCheck = await db.get(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='portal_services'"
+  );
+  
+  if (!tableCheck) {
+    console.log("[RBAC] RBAC tables not found. Initializing...");
+    const rbacManager = new RBACManager(db);
+    
+    try {
+      // 初始化RBAC表结构和TLS服务权限
+      await rbacManager.initialize();
+      
+      // 从旧的role字段迁移到RBAC体系
+      await rbacManager.migrateFromLegacyRoles();
+      
+      console.log("[RBAC] RBAC system initialized successfully.");
+    } catch (err) {
+      console.error("[RBAC] Failed to initialize RBAC system:", err);
+      throw err;
+    }
+  } else {
+    console.log("[RBAC] RBAC tables already exist. Skipping initialization.");
+    
+    // 检查是否需要迁移未迁移的用户
+    const rbacManager = new RBACManager(db);
+    const unmigrated = await db.get(
+      `SELECT COUNT(*) as count FROM users u
+       WHERE u.role IS NOT NULL 
+       AND NOT EXISTS (
+         SELECT 1 FROM user_roles ur
+         JOIN roles r ON ur.role_id = r.id
+         WHERE ur.user_id = u.id AND r.service_id = 'tls-cert'
+       )`
+    );
+    
+    if (unmigrated && unmigrated.count > 0) {
+      console.log(`[RBAC] Found ${unmigrated.count} unmigrated users. Migrating...`);
+      await rbacManager.migrateFromLegacyRoles();
+    }
+  }
 }
 
 async function migrateLegacyCertificates(db) {
