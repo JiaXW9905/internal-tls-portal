@@ -30,20 +30,19 @@ const SIDEBAR_CONFIG = {
         { label: '用户与权限', href: '/users', icon: '👥', roles: ['admin'] },
         { label: '系统设置', href: '/settings', icon: '⚙️', roles: ['admin'] }
       ]
+    },
+    {
+      id: 'rtc-deployment',
+      label: 'RTC部署管理',
+      icon: '🚀',
+      type: 'group',
+      expanded: false,
+      items: [
+        { label: '项目列表', href: '/rtc-deployment' },
+        { label: '创建项目', href: '/rtc-deployment/create' },
+        { label: '资源计算器', href: '/rtc-deployment/calculator' }
+      ]
     }
-    // 未来服务可以在这里添加
-    // 示例：
-    // {
-    //   id: 'service-a',
-    //   label: '服务A',
-    //   icon: '📦',
-    //   type: 'group',
-    //   expanded: false,
-    //   items: [
-    //     { label: '服务A-页面1', href: '/service-a/page1', icon: '📄' },
-    //     { label: '服务A-页面2', href: '/service-a/page2', icon: '📄' }
-    //   ]
-    // }
   ]
 };
 

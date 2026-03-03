@@ -11,6 +11,7 @@ const { initDb } = require("./db");
 const changelogData = require("./changelog-data");
 const { RBACManager } = require("./rbac-manager");
 const { createRBACMiddleware } = require("./rbac-middleware");
+const { createRTCDeploymentRoutes } = require("./routes/rtc-deployment");
 
 const app = express();
 const port = process.env.PORT || 52344;
@@ -685,6 +686,12 @@ ${certs.map(c => {
         return res.status(500).json({ error: "Failed to load history" });
       }
     });
+
+    // ============================================
+    // RTC Deployment Service APIs
+    // ============================================
+    
+    createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requireAuth);
 
     // --- Auth Routes ---
 
@@ -1458,6 +1465,12 @@ ${certs.map(c => {
     app.get("/portal", (req, res) => {
       if (!req.session.user) return res.redirect("/login");
       res.sendFile(path.join(__dirname, "..", "public", "portal-home.html"));
+    });
+
+    // RTC Deployment Service Pages
+    app.get("/rtc-deployment/calculator", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "calculator.html"));
     });
 
     app.get("/", (req, res) => {

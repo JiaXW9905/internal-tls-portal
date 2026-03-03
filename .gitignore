@@ -4,6 +4,9 @@ uploads/
 *.log
 .DS_Store
 .tmp_py/
+.tmp_deployment_references/
 internal-tls-portal-*.tar.gz
 deploy/env.prod
 deploy/env.dev
+.ai_config.json
+ai-config.json

@@ -179,6 +179,40 @@ async function initRBACSystem(db) {
       console.log(`[RBAC] Found ${unmigrated.count} unmigrated users. Migrating...`);
       await rbacManager.migrateFromLegacyRoles();
     }
+    
+    // 检查并初始化RTC服务
+    await initRTCDeploymentService(db);
+  }
+}
+
+async function initRTCDeploymentService(db) {
+  console.log("[RTC] Checking RTC Deployment service initialization...");
+  
+  // 检查RTC服务是否已注册
+  const rtcService = await db.get(
+    "SELECT id FROM portal_services WHERE id = 'rtc-deployment'"
+  );
+  
+  if (!rtcService) {
+    console.log("[RTC] RTC Deployment service not found. Initializing...");
+    
+    try {
+      // 读取并执行RTC服务初始化脚本
+      const fs = require('fs');
+      const path = require('path');
+      const initSQL = fs.readFileSync(
+        path.join(__dirname, 'migrations', '003-rtc-deployment-service.sql'),
+        'utf-8'
+      );
+      
+      await db.exec(initSQL);
+      console.log("[RTC] RTC Deployment service initialized successfully.");
+    } catch (err) {
+      console.error("[RTC] Failed to initialize RTC service:", err);
+      // 不抛出错误，允许系统继续运行
+    }
+  } else {
+    console.log("[RTC] RTC Deployment service already exists.");
   }
 }
 
