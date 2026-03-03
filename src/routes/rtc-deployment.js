@@ -12,6 +12,52 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
   const configGen = new RTCConfigGenerator();
 
   // ============================================
+  // 临时计算接口（无需创建项目）
+  // ============================================
+
+  /**
+   * 临时资源计算（不保存，用于计算器独立使用）
+   */
+  app.post('/api/rtc-deployment/calculate-temp',
+    requireAuth,
+    async (req, res) => {
+      try {
+        const {
+          concurrent_users,
+          channels,
+          channel_model,
+          has_video = true,
+          video_resolution = '720p',
+          fps = 15,
+          deployment_type = 'pure',
+          redundancy = 0.3
+        } = req.body;
+
+        if (!concurrent_users || !channels || !channel_model) {
+          return res.status(400).json({ error: '缺少必填参数: concurrent_users, channels, channel_model' });
+        }
+
+        const scenario = {
+          concurrentUsers: parseInt(concurrent_users),
+          channels: parseInt(channels),
+          channelModel: channel_model,
+          hasVideo: has_video === true || has_video === 'true',
+          videoResolution: video_resolution,
+          fps: parseInt(fps),
+          deploymentType: deployment_type,
+          redundancy: parseFloat(redundancy)
+        };
+
+        const result = resourceCalc.calculate(scenario);
+        return res.json(result);
+      } catch (err) {
+        console.error('[RTC] Temp calculation error:', err);
+        return res.status(500).json({ error: '计算失败: ' + err.message });
+      }
+    }
+  );
+
+  // ============================================
   // 项目管理
   // ============================================
 

@@ -1467,7 +1467,15 @@ ${certs.map(c => {
       res.sendFile(path.join(__dirname, "..", "public", "portal-home.html"));
     });
 
-    // RTC Deployment Service Pages
+    // RTC Deployment Service Pages（同时匹配有无trailing slash）
+    app.get(["/rtc-deployment", "/rtc-deployment/"], (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "projects.html"));
+    });
+    app.get("/rtc-deployment/create", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "create.html"));
+    });
     app.get("/rtc-deployment/calculator", (req, res) => {
       if (!req.session.user) return res.redirect("/login");
       res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "calculator.html"));

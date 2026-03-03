@@ -38,7 +38,7 @@ const SIDEBAR_CONFIG = {
       type: 'group',
       expanded: false,
       items: [
-        { label: '项目列表', href: '/rtc-deployment' },
+        { label: '项目列表', href: '/rtc-deployment/' },
         { label: '创建项目', href: '/rtc-deployment/create' },
         { label: '资源计算器', href: '/rtc-deployment/calculator' }
       ]
