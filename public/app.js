@@ -3,6 +3,14 @@ const requestMessage = document.getElementById("request-message");
 const lookupMessage = document.getElementById("lookup-message");
 const requestsTableBody = document.querySelector("#requests-table tbody");
 const loadRequestsBtn = document.getElementById("load-requests");
+const myCertsTableBody = document.querySelector("#my-certs-table tbody");
+const myCertsSummary = document.getElementById("my-certs-summary");
+const myCertsPagination = document.getElementById("my-certs-pagination");
+const myCertsMessage = document.getElementById("my-certs-message");
+const myCertsSearchInput = document.getElementById("my-certs-search");
+const myCertsStatusSelect = document.getElementById("my-certs-status");
+const myCertsTypeSelect = document.getElementById("my-certs-type");
+const myCertsSearchBtn = document.getElementById("my-certs-search-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userMenu = document.getElementById("user-menu");
 const userMenuBtn = document.getElementById("user-menu-btn");
@@ -11,6 +19,9 @@ const adminLink = document.getElementById("nav-admin");
 const overviewLink = document.getElementById("nav-overview");
 const usersLink = document.getElementById("nav-users");
 const navSettings = document.getElementById("nav-settings");
+const MY_CERTS_PAGE_SIZE = 10;
+let myCertsPage = 1;
+let currentUser = null;
 
 const STATUS_LABELS = {
   pending: "待处理",
@@ -38,6 +49,24 @@ async function fetchJson(url, options = {}) {
     throw new Error(data.error || "请求失败");
   }
   return res.json();
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "-";
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getExpiryDisplay(item) {
+  if (item.cert_expire_at) return formatDate(item.cert_expire_at);
+  if (item.cert_created_at) {
+    const d = new Date(item.cert_created_at);
+    if (Number.isNaN(d.getTime())) return "-";
+    d.setDate(d.getDate() + 365 * 2);
+    return formatDate(d.toISOString());
+  }
+  return "-";
 }
 
 function renderRequests(items) {
@@ -142,6 +171,143 @@ async function loadRequests() {
   }
 }
 
+function renderMyCertsPagination(currentPage, totalItems) {
+  const totalPages = Math.ceil(totalItems / MY_CERTS_PAGE_SIZE);
+  if (totalPages <= 1) {
+    myCertsPagination.innerHTML = "";
+    return;
+  }
+
+  myCertsPagination.innerHTML = `
+    <div class="pagination-controls">
+      <button ${currentPage === 1 ? "disabled" : ""} data-page="${currentPage - 1}">上一页</button>
+      <span class="page-info">第 ${currentPage} / ${totalPages} 页</span>
+      <button ${currentPage === totalPages ? "disabled" : ""} data-page="${currentPage + 1}">下一页</button>
+    </div>
+  `;
+
+  myCertsPagination.querySelectorAll("button[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = Number(btn.dataset.page);
+      if (target > 0) {
+        loadMyCertificates(target);
+      }
+    });
+  });
+}
+
+function renderMyCertsTable(items) {
+  myCertsTableBody.innerHTML = "";
+  if (!items.length) {
+    myCertsTableBody.innerHTML = "<tr><td colspan=\"7\" class=\"muted\">暂无证书记录。</td></tr>";
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("tr");
+
+    const isCurrentUserPrivileged = currentUser && (
+      Boolean(currentUser.isAdmin) ||
+      String(currentUser.role || "").toLowerCase() === "admin" ||
+      String(currentUser.role || "").toLowerCase().includes("admin")
+    );
+    const itemRequesterEmpty = !(item.requester_email || "").trim();
+    const isItemIssuedWithCert = item.status === "issued" && item.request_type !== "delete" && item.cert_id;
+
+    const canSubmitDelete =
+      currentUser &&
+      isItemIssuedWithCert &&
+      (
+        (currentUser.role !== "dev" && item.requester_email === currentUser.email) ||
+        (isCurrentUserPrivileged && itemRequesterEmpty)
+      );
+
+    let actionContent = "<span class=\"muted\">-</span>";
+    if (canSubmitDelete) {
+      actionContent = "<button type=\"button\" class=\"btn-delete-request\">申请删除/注销</button>";
+    } else if (isCurrentUserPrivileged && !itemRequesterEmpty && item.requester_email !== (currentUser.email || "")) {
+      actionContent = "<span class=\"muted\">仅申请人可发起</span>";
+    }
+
+    row.innerHTML = `
+      <td>${item.customer_name}</td>
+      <td>${item.product_sku}</td>
+      <td>${item.vid}</td>
+      <td>${item.requester_email}</td>
+      <td>${getExpiryDisplay(item)}</td>
+      <td><span class="status ${item.status}">${STATUS_LABELS[item.status] || item.status}</span></td>
+      <td class="table-actions col-actions">${actionContent}</td>
+    `;
+
+    const deleteBtn = row.querySelector(".btn-delete-request");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", async () => {
+        const confirmed = await Modal.confirm(
+          "申请删除/注销",
+          "确认提交该证书的删除/注销申请吗？",
+          { confirmText: "确认提交", danger: true }
+        );
+        if (!confirmed) return;
+
+        myCertsMessage.textContent = "提交中...";
+        myCertsMessage.className = "muted";
+        try {
+          await fetchJson("/api/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerName: item.customer_name,
+              productSku: item.product_sku,
+              vid: item.vid,
+              requesterName: item.requester_name || (currentUser ? currentUser.name : ""),
+              requestType: "delete",
+              sourceRequestId: item.id
+            })
+          });
+          myCertsMessage.textContent = "删除/注销申请已提交。";
+          myCertsMessage.className = "success";
+          await loadRequests();
+          await loadMyCertificates(1);
+        } catch (err) {
+          myCertsMessage.textContent = err.message;
+          myCertsMessage.className = "error";
+        }
+      });
+    }
+
+    myCertsTableBody.appendChild(row);
+  });
+}
+
+async function loadMyCertificates(page = 1) {
+  myCertsMessage.textContent = "加载中...";
+  myCertsMessage.className = "muted";
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("pageSize", String(MY_CERTS_PAGE_SIZE));
+
+  const q = myCertsSearchInput.value.trim();
+  if (q) params.set("q", q);
+  const status = myCertsStatusSelect.value;
+  if (status) params.set("status", status);
+  const requestType = myCertsTypeSelect.value;
+  if (requestType) params.set("requestType", requestType);
+
+  try {
+    const data = await fetchJson(`/api/my-certificates?${params.toString()}`);
+    if (!data) return;
+    myCertsPage = page;
+    renderMyCertsTable(data.items || []);
+    renderMyCertsPagination(myCertsPage, data.total || 0);
+    const summaryPrefix = data.isAdminScope ? "可查看证书合计" : "我的证书合计";
+    myCertsSummary.textContent = `${summaryPrefix} ${data.scopeTotal || 0} 条，当前筛选命中 ${data.total || 0} 条`;
+    myCertsMessage.textContent = "";
+  } catch (err) {
+    myCertsMessage.textContent = err.message;
+    myCertsMessage.className = "error";
+  }
+}
+
 requestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   requestMessage.textContent = "提交中...";
@@ -198,6 +364,7 @@ async function init() {
   try {
     const me = await fetchJson("/api/me");
     if (!me) return;
+    currentUser = me;
     
     // 渲染侧边栏导航
     if (typeof renderSidebarNav === 'function') {
@@ -234,10 +401,18 @@ async function init() {
       return;
     }
     loadRequests();
+    loadMyCertificates(1);
   } catch (err) {
     lookupMessage.textContent = err.message;
     lookupMessage.className = "error";
   }
 }
+
+myCertsSearchBtn.addEventListener("click", () => loadMyCertificates(1));
+myCertsSearchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") loadMyCertificates(1);
+});
+myCertsStatusSelect.addEventListener("change", () => loadMyCertificates(1));
+myCertsTypeSelect.addEventListener("change", () => loadMyCertificates(1));
 
 init();

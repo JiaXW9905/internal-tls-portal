@@ -94,6 +94,13 @@ async function initDb() {
     );
   }
 
+  const hasSourceRequestId = requestColumns.some((col) => col.name === "source_request_id");
+  if (!hasSourceRequestId) {
+    await db.exec(
+      "ALTER TABLE requests ADD COLUMN source_request_id INTEGER"
+    );
+  }
+
   const userColumns = await db.all("PRAGMA table_info(users)");
   const hasEmailVerified = userColumns.some((col) => col.name === "email_verified");
   if (!hasEmailVerified) {

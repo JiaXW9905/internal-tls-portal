@@ -9,6 +9,20 @@ const requestsLink = document.getElementById("nav-requests");
 const adminLink = document.getElementById("nav-admin");
 const overviewLink = document.getElementById("nav-overview");
 const usersLink = document.getElementById("nav-users");
+let currentUserRole = "";
+let currentUserIsAdmin = false;
+
+function isAdminLikeRole(role) {
+  const text = String(role || "").toLowerCase();
+  return text === "admin" || text.endsWith("-admin") || text.includes("admin");
+}
+
+const TYPE_LABELS = {
+  new: "新版",
+  renew: "更新/续期",
+  update: "更新/续期",
+  delete: "删除/注销"
+};
 
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, options);
@@ -35,12 +49,45 @@ function requestCard(item, isPending) {
     <h3>${item.customer_name}</h3>
     <div class="muted">SKU：${item.product_sku}</div>
     <div class="muted">VID：${item.vid}</div>
+    <div class="muted">申请类型：${TYPE_LABELS[item.request_type] || item.request_type || "-"}</div>
+    ${item.request_type === "delete" ? `<div class="muted">目标申请ID：${item.source_request_id || "-"}</div>` : ""}
     <div class="muted">申请人：${item.requester_name}（${item.requester_email}）</div>
     <div class="muted">创建时间：${new Date(item.created_at).toLocaleString()}</div>
     <div class="status ${item.status}">${item.status}</div>
   `;
 
   if (isPending) {
+    if (item.request_type === "delete") {
+      const actionWrap = document.createElement("div");
+      actionWrap.innerHTML = `
+        <div class="muted">删除/注销申请无需上传证书文件。</div>
+        <button type="button" class="btn-danger" style="margin-top: 8px;">确认删除/注销</button>
+        <div class="muted" style="margin-top: 8px;"></div>
+      `;
+      const btn = actionWrap.querySelector("button");
+      const statusEl = actionWrap.querySelector("div:last-child");
+      btn.addEventListener("click", async () => {
+        const confirmed = await Modal.confirm(
+          "确认删除/注销",
+          "确认处理该删除/注销申请吗？处理后该 VID 相关活跃证书将被撤销。",
+          { danger: true, confirmText: "确认处理" }
+        );
+        if (!confirmed) return;
+
+        statusEl.textContent = "处理中...";
+        try {
+          await fetchJson(`/api/requests/${item.id}/process-delete`, { method: "POST" });
+          statusEl.textContent = "已处理删除/注销申请。";
+          await loadAll();
+        } catch (err) {
+          statusEl.textContent = err.message;
+          statusEl.className = "error";
+        }
+      });
+      card.appendChild(actionWrap);
+      return card;
+    }
+
     const form = document.createElement("form");
     form.innerHTML = `
       <label>证书 ZIP 文件</label>
@@ -100,7 +147,7 @@ function renderIssuedTable(items) {
   issuedTableBody.innerHTML = "";
   if (!items.length) {
     issuedTableBody.innerHTML =
-      "<tr><td colspan=\"6\" class=\"muted\">暂无数据。</td></tr>";
+      "<tr><td colspan=\"7\" class=\"muted\">暂无数据。</td></tr>";
     return;
   }
   items.forEach((item) => {
@@ -119,10 +166,59 @@ function renderIssuedTable(items) {
       canRevoke = daysSinceIssued <= 7;
     }
 
+    const requesterName = (item.requester_name || "").trim();
+    const requesterEmail = (item.requester_email || "").trim();
+    const isRequesterEmpty = !requesterName || !requesterEmail;
+    const requesterDisplay = (requesterName && requesterEmail)
+      ? `${requesterName}（${requesterEmail}）`
+      : "<span class=\"muted\">-</span>";
+
     if (item.request_type === "delete") {
       actionContent = "<span class=\"muted\">证书已删除</span>";
     } else if (!hasActiveCert) {
       actionContent = "<span class=\"muted\">证书文件缺失</span>";
+    } else if ((currentUserRole === "dev" || currentUserIsAdmin) && isRequesterEmpty) {
+      const forceDeleteBtn = document.createElement("button");
+      forceDeleteBtn.type = "button";
+      forceDeleteBtn.textContent = "一键删除/撤销";
+      forceDeleteBtn.className = "btn-danger";
+      forceDeleteBtn.addEventListener("click", async () => {
+        const confirmed = await Modal.confirm(
+          "一键删除/撤销",
+          "该证书申请人为空，确认执行删除/撤销吗？此操作不可逆。",
+          { danger: true, confirmText: "确认执行" }
+        );
+        if (!confirmed) return;
+
+        pendingMessage.textContent = "处理中...";
+        pendingMessage.className = "muted";
+        try {
+          await fetchJson(`/api/requests/${item.id}/revoke`, { method: "POST" });
+          pendingMessage.textContent = "已删除/撤销该证书。";
+          pendingMessage.className = "success";
+          await loadAll();
+        } catch (err) {
+          pendingMessage.textContent = err.message;
+          pendingMessage.className = "error";
+        }
+      });
+
+      actionContent = "";
+      const actionTd = document.createElement("td");
+      actionTd.className = "table-actions col-actions";
+      actionTd.appendChild(forceDeleteBtn);
+
+      row.innerHTML = `
+        <td>${item.customer_name}</td>
+        <td>${item.product_sku}</td>
+        <td>${item.vid}</td>
+        <td>${requesterDisplay}</td>
+        <td>${item.issued_at ? new Date(item.issued_at).toLocaleString() : "-"}</td>
+        <td>${item.cert_zip_password || "-"}</td>
+      `;
+      row.appendChild(actionTd);
+      issuedTableBody.appendChild(row);
+      return;
     } else if (!canRevoke) {
       // 超过7天，显示"-"，不显示任何文字提示
       actionContent = "<span class=\"muted\">-</span>";
@@ -160,7 +256,7 @@ function renderIssuedTable(items) {
         <td>${item.customer_name}</td>
         <td>${item.product_sku}</td>
         <td>${item.vid}</td>
-        <td>${item.requester_name}（${item.requester_email}）</td>
+        <td>${requesterDisplay}</td>
         <td>${item.issued_at ? new Date(item.issued_at).toLocaleString() : "-"}</td>
         <td>${item.cert_zip_password || "-"}</td>
       `;
@@ -173,7 +269,7 @@ function renderIssuedTable(items) {
       <td>${item.customer_name}</td>
       <td>${item.product_sku}</td>
       <td>${item.vid}</td>
-      <td>${item.requester_name}（${item.requester_email}）</td>
+      <td>${requesterDisplay}</td>
       <td>${item.issued_at ? new Date(item.issued_at).toLocaleString() : "-"}</td>
       <td>${item.cert_zip_password || "-"}</td>
       <td class="table-actions col-actions">${actionContent}</td>
@@ -236,6 +332,8 @@ async function init() {
     }
     initUserMenu(me);
     const role = me.role || (me.isAdmin ? "admin" : "service");
+    currentUserRole = role;
+    currentUserIsAdmin = Boolean(me.isAdmin) || isAdminLikeRole(role);
     if (role === "service") {
       window.location.href = "/";
       return;

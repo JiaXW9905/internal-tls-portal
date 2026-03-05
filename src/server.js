@@ -493,6 +493,11 @@ ${certs.map(c => {
       return user.isAdmin ? ROLE_ADMIN : ROLE_SERVICE;
     }
 
+    function isAdminLikeRole(role) {
+      const text = String(role || "").toLowerCase();
+      return text === ROLE_ADMIN || text.endsWith("-admin") || text.includes("admin");
+    }
+
     // requireAdmin 和 requireRole 现在由 RBAC 中间件提供
     // 原有实现已被注释，使用 createRBACMiddleware 返回的版本
     /*
@@ -1139,7 +1144,7 @@ ${certs.map(c => {
       "/api/requests",
       requireRole([ROLE_ADMIN, ROLE_SERVICE, ROLE_PRODUCT]),
       async (req, res) => {
-        const { customerName, productSku, vid, requesterName, requestType } = req.body;
+        const { customerName, productSku, vid, requesterName, requestType, sourceRequestId } = req.body;
         if (!customerName || !productSku || !vid) {
           return res.status(400).json({ error: "Missing required fields" });
         }
@@ -1148,7 +1153,26 @@ ${certs.map(c => {
           return res.status(400).json({ error: "Missing requester name" });
         }
         const finalRequestType = requestType || "new";
+        const finalSourceRequestId = sourceRequestId ? Number(sourceRequestId) : null;
         const now = nowIso();
+
+        if (finalRequestType === "delete" && Number.isInteger(finalSourceRequestId)) {
+          const target = await db.get("SELECT * FROM requests WHERE id = ?", [finalSourceRequestId]);
+          if (!target) {
+            return res.status(400).json({ error: "Target request not found" });
+          }
+          const targetRequesterEmpty = !(target.requester_email || "").trim();
+          const submitterIsPrivileged = isAdminLikeRole(getRole(req.session.user));
+          if (!targetRequesterEmpty || !submitterIsPrivileged) {
+            // 普通用户只能删除自己的；管理员只能对空申请人记录跳过校验
+            if (target.requester_email !== req.session.user.email) {
+              return res.status(403).json({ error: "Forbidden target request scope" });
+            }
+          }
+          if (target.status !== REQUEST_STATUS_ISSUED) {
+            return res.status(400).json({ error: "Target request is not in issued status" });
+          }
+        }
 
         // 同 VID 新申请触发：将旧已签发证书请求置为“已更新”
         await db.run(
@@ -1164,10 +1188,10 @@ ${certs.map(c => {
 
         const result = await db.run(
           `INSERT INTO requests
-            (customer_name, product_sku, vid, requester_name, requester_email, status, request_type, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (customer_name, product_sku, vid, requester_name, requester_email, status, request_type, source_request_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           customerName, productSku, vid, finalRequesterName, req.session.user.email,
-          REQUEST_STATUS_PENDING, finalRequestType, now
+          REQUEST_STATUS_PENDING, finalRequestType, Number.isInteger(finalSourceRequestId) ? finalSourceRequestId : null, now
         );
 
         // Notify all developers about the new request
@@ -1230,6 +1254,92 @@ ${certs.map(c => {
       const rows = await fetchRequestsWithActiveCert(where, params);
       return res.json(rows);
     });
+
+    app.get(
+      "/api/my-certificates",
+      requireRole([ROLE_ADMIN, ROLE_DEV, ROLE_SERVICE, ROLE_PRODUCT]),
+      async (req, res) => {
+        const role = getRole(req.session.user);
+        const isAdminScope = isAdminLikeRole(role);
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 10));
+        const offset = (page - 1) * pageSize;
+        const q = (req.query.q || "").trim();
+        const status = (req.query.status || "issued").trim();
+        const requestType = (req.query.requestType || "").trim();
+
+        const baseClauses = [
+          "c.id IS NOT NULL"
+        ];
+        const baseParams = [];
+
+        if (!isAdminScope) {
+          baseClauses.push("r.requester_email = ?");
+          baseParams.push(req.session.user.email);
+        }
+
+        const clauses = [...baseClauses];
+        const params = [...baseParams];
+
+        if (status && status !== "all") {
+          const statuses = String(status).split(",").map((s) => s.trim()).filter(Boolean);
+          if (statuses.length) {
+            clauses.push(`r.status IN (${statuses.map(() => "?").join(", ")})`);
+            params.push(...statuses);
+          }
+        }
+
+        if (requestType && requestType !== "all") {
+          clauses.push("r.request_type = ?");
+          params.push(requestType);
+        }
+
+        if (q) {
+          clauses.push("(r.customer_name LIKE ? OR r.product_sku LIKE ? OR r.vid LIKE ? OR r.requester_name LIKE ? OR r.requester_email LIKE ?)");
+          const like = `%${q}%`;
+          params.push(like, like, like, like, like);
+        }
+
+        const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+        const whereForScopeTotal = baseClauses.length ? `WHERE ${baseClauses.join(" AND ")}` : "";
+        const certJoinSql = `
+          FROM requests r
+          LEFT JOIN request_certificates c
+            ON c.id = (
+              SELECT id
+              FROM request_certificates
+              WHERE request_id = r.id AND status = '${CERT_STATUS_ACTIVE}'
+              ORDER BY datetime(created_at) DESC, id DESC
+              LIMIT 1
+            )
+        `;
+
+        const countRow = await db.get(
+          `SELECT COUNT(*) as count ${certJoinSql} ${where}`,
+          params
+        );
+        const scopeTotalRow = await db.get(
+          `SELECT COUNT(*) as count ${certJoinSql} ${whereForScopeTotal}`,
+          baseParams
+        );
+
+        const rows = await fetchRequestsWithActiveCert(
+          where,
+          [...params, pageSize, offset],
+          " LIMIT ? OFFSET ?",
+          "ORDER BY datetime(r.issued_at) DESC, r.id DESC"
+        );
+
+        return res.json({
+          items: rows,
+          total: countRow ? countRow.count : 0,
+          scopeTotal: scopeTotalRow ? scopeTotalRow.count : 0,
+          page,
+          pageSize,
+          isAdminScope
+        });
+      }
+    );
 
     app.post("/api/requests/:id/withdraw", requireAuth, async (req, res) => {
       const row = await db.get("SELECT * FROM requests WHERE id = ?", [req.params.id]);
@@ -1311,10 +1421,14 @@ ${certs.map(c => {
         // 后端强校验：证书签发超过7天不允许撤销（避免仅前端限制被绕过）
         const issuedAtValue = active.created_at || row.issued_at;
         const issuedAt = issuedAtValue ? new Date(issuedAtValue).getTime() : NaN;
+        const requesterName = (row.requester_name || "").trim();
+        const requesterEmail = (row.requester_email || "").trim();
+        const isPrivilegedNoRequesterBypass =
+          (isAdminLikeRole(role) || role === ROLE_DEV) && (!requesterName || !requesterEmail);
         if (!Number.isNaN(issuedAt)) {
           const nowMs = Date.now();
           const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-          if (nowMs - issuedAt > sevenDaysMs) {
+          if (!isPrivilegedNoRequesterBypass && nowMs - issuedAt > sevenDaysMs) {
             return res.status(400).json({ error: "证书签发超过7天，不允许撤销" });
           }
         }
@@ -1325,6 +1439,94 @@ ${certs.map(c => {
           CERT_STATUS_REVOKED, now, req.session.user.email, active.id
         );
         await db.run("UPDATE requests SET status = ? WHERE id = ?", [REQUEST_STATUS_REVOKED, req.params.id]);
+        return res.json({ ok: true });
+      }
+    );
+
+    app.post(
+      "/api/requests/:id/process-delete",
+      requireRole([ROLE_ADMIN, ROLE_DEV]),
+      async (req, res) => {
+        const row = await db.get("SELECT * FROM requests WHERE id = ?", [req.params.id]);
+        if (!row) return res.status(404).json({ error: "Request not found" });
+        if (row.status !== REQUEST_STATUS_PENDING) {
+          return res.status(400).json({ error: "Only pending delete request can be processed" });
+        }
+        if (row.request_type !== "delete") {
+          return res.status(400).json({ error: "Request type is not delete" });
+        }
+
+        let targetRequestId = Number(row.source_request_id);
+        let targetRequest = Number.isInteger(targetRequestId)
+          ? await db.get("SELECT * FROM requests WHERE id = ?", [targetRequestId])
+          : null;
+
+        // 兼容历史删除申请（没有 source_request_id）：
+        // 如果同一申请人 + 同一VID 仅存在唯一已签发目标，则自动补齐目标，避免老单无法处理。
+        if (!targetRequest) {
+          const candidates = await db.all(
+            `SELECT *
+             FROM requests
+             WHERE requester_email = ?
+               AND vid = ?
+               AND status = ?
+               AND request_type != 'delete'
+             ORDER BY datetime(issued_at) DESC, id DESC`,
+            [row.requester_email, row.vid, REQUEST_STATUS_ISSUED]
+          );
+          if (candidates.length === 1) {
+            targetRequest = candidates[0];
+            targetRequestId = targetRequest.id;
+          } else if (candidates.length === 0) {
+            return res.status(400).json({ error: "Target request not found" });
+          } else {
+            return res.status(400).json({ error: "Multiple target requests found, please resubmit delete from My Certificates" });
+          }
+        }
+        if (targetRequest.vid !== row.vid) {
+          return res.status(400).json({ error: "Target request vid mismatch" });
+        }
+
+        // 仅撤销目标申请对应的活跃证书（不影响同VID其他申请）
+        // 这样删除/注销只作用于被指定的证书申请
+        // NOTE: 旧的无目标ID删除申请将被拦截，避免误伤其他记录。
+        // 同时将目标申请状态流转为已撤销。
+        
+        const now = nowIso();
+        // 撤销目标申请上的活跃证书
+        try {
+          await db.run("BEGIN");
+          await db.run(
+            `UPDATE request_certificates
+             SET status = ?, revoked_at = ?, revoked_by_email = ?
+             WHERE request_id = ? AND status = ?`,
+            CERT_STATUS_REVOKED,
+            now,
+            req.session.user.email,
+            targetRequestId,
+            CERT_STATUS_ACTIVE
+          );
+
+          // 仅更新目标申请状态，不再批量更新同VID记录
+          await db.run(
+            `UPDATE requests
+             SET status = ?
+             WHERE id = ? AND status = ?`,
+            REQUEST_STATUS_REVOKED,
+            targetRequestId,
+            REQUEST_STATUS_ISSUED
+          );
+
+          // 删除申请单流转为已完成
+          await db.run(
+            "UPDATE requests SET status = ?, issued_at = ? WHERE id = ?",
+            [REQUEST_STATUS_ISSUED, now, row.id]
+          );
+          await db.run("COMMIT");
+        } catch (err) {
+          await db.run("ROLLBACK");
+          throw err;
+        }
         return res.json({ ok: true });
       }
     );

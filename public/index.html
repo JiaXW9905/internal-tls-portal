@@ -89,6 +89,47 @@
               </table>
             </div>
           </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>我的证书</h2>
+              <div class="table-toolbar">
+                <input id="my-certs-search" type="search" placeholder="搜索客户名 / SKU / VID / 申请人邮箱" />
+                <select id="my-certs-status">
+                  <option value="issued" selected>已签发</option>
+                  <option value="all">全部状态</option>
+                  <option value="revoked">证书已撤销</option>
+                  <option value="updated">已更新</option>
+                </select>
+                <select id="my-certs-type">
+                  <option value="all" selected>全部类型</option>
+                  <option value="new">新办</option>
+                  <option value="renew">续期</option>
+                  <option value="delete">删除/注销</option>
+                </select>
+                <button id="my-certs-search-btn" type="button">查询</button>
+              </div>
+            </div>
+            <div id="my-certs-summary" class="muted"></div>
+            <div class="table-wrap">
+              <table class="table" id="my-certs-table">
+                <thead>
+                  <tr>
+                    <th>客户名称</th>
+                    <th>SKU</th>
+                    <th>VID</th>
+                    <th>申请人邮箱</th>
+                    <th>过期时间</th>
+                    <th>状态</th>
+                    <th class="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="my-certs-pagination" class="pagination"></div>
+            <div id="my-certs-message" class="muted"></div>
+          </section>
         </main>
       </div>
     </div>
