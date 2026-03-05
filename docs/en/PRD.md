@@ -2,7 +2,7 @@
 
 ## 1. Document Info
 - Product: Internal TLS Certificate Portal
-- Baseline release: `0.9.8.4`
+- Baseline release: `1.0.1`
 - Purpose: define business goals, role permissions, workflows, and acceptance criteria as the single source of truth for go-live and handover.
 
 ## 2. Background and Goals

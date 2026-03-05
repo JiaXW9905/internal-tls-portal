@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.1] - 2026-03-05
+
+### 新增功能
+- ✨ **我的证书**：在"证书申请"页新增"我的证书"区域，展示与当前用户关联的证书记录，支持分页、搜索与状态/类型过滤
+- ✨ **申请删除/注销**：申请人可对自己的已签发证书一键提交删除申请；TLS管理员与系统管理员可对申请人为空的证书提交删除申请（无7天限制）
+- ✨ **管理员确认删除**：管理员在"待处理申请"中可对 `delete` 类型申请点击"确认删除/注销"，精确注销目标证书（通过 `source_request_id` 锁定）
+- ✨ **管理员可见范围扩展**：`tls-admin` 角色可在"我的证书"中查看所有记录（与 `admin` 相同）
+
+### 改动明细
+- `public/index.html` / `public/app.js`：新增"我的证书"UI及交互逻辑
+- `public/admin.js`：待处理申请展示"申请类型"，对 `delete` 申请展示"确认删除/注销"按钮；管理员对空申请人证书展示"一键删除/撤销"按钮
+- `src/server.js`：新增 `GET /api/my-certificates`、`POST /api/requests/:id/process-delete`；`POST /api/requests` 管理员空申请人删除校验绕过；`POST /api/requests/:id/revoke` 7天规则管理员绕过
+- `src/db.js`：新增 `requests.source_request_id` 列迁移
+
+---
+
 ## [1.0.0] - 2026-03-02
 
 ### 🎉 重大升级：产业互联网内部门户
