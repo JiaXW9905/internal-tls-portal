@@ -139,6 +139,10 @@ initDb()
       );
     }
 
+    // Cached SMTP transporter — recreated only when config changes
+    let _smtpTransporter = null;
+    let _smtpConfigKey = "";
+
     async function sendMail(to, subject, text, html) {
       const settings = await getSettings();
       if (!settings.smtp_host || !settings.smtp_user) {
@@ -147,15 +151,21 @@ initDb()
       }
 
       try {
-        const transporter = nodemailer.createTransport({
-          host: settings.smtp_host,
-          port: Number(settings.smtp_port) || 465,
-          secure: settings.smtp_secure !== false,
-          auth: {
-            user: settings.smtp_user,
-            pass: settings.smtp_pass
-          }
-        });
+        const configKey = `${settings.smtp_host}:${settings.smtp_port}:${settings.smtp_user}:${settings.smtp_secure}`;
+        if (!_smtpTransporter || configKey !== _smtpConfigKey) {
+          _smtpTransporter = nodemailer.createTransport({
+            host: settings.smtp_host,
+            port: Number(settings.smtp_port) || 465,
+            secure: settings.smtp_secure !== false,
+            pool: true,
+            maxConnections: 3,
+            auth: {
+              user: settings.smtp_user,
+              pass: settings.smtp_pass
+            }
+          });
+          _smtpConfigKey = configKey;
+        }
 
         const mailOptions = {
           from: settings.smtp_from || settings.smtp_user,
@@ -167,11 +177,14 @@ initDb()
           mailOptions.html = html;
         }
 
-        await transporter.sendMail(mailOptions);
+        await _smtpTransporter.sendMail(mailOptions);
         console.log("[Mail] Sent to:", to, "| Subject:", subject);
         return true;
       } catch (err) {
         console.error("[Mail] Failed to send:", err);
+        // Reset cached transporter on failure so next call rebuilds it
+        _smtpTransporter = null;
+        _smtpConfigKey = "";
         return false;
       }
     }
@@ -1194,20 +1207,22 @@ ${certs.map(c => {
           REQUEST_STATUS_PENDING, finalRequestType, Number.isInteger(finalSourceRequestId) ? finalSourceRequestId : null, now
         );
 
-        // Notify all developers about the new request
-        try {
-          const devs = await db.all("SELECT email FROM users WHERE role = ?", [ROLE_DEV]);
+        // Respond immediately; notify devs in background (non-blocking)
+        res.json({ id: result.lastID });
+
+        db.all("SELECT email FROM users WHERE role = ?", [ROLE_DEV]).then((devs) => {
           if (devs && devs.length > 0) {
             const devEmails = devs.map((d) => d.email).join(",");
             const subject = `[TLS Portal] 证书申请新通知 - VID: ${vid}`;
             const text = `研发团队您好：\n\n系统收到了一份新的证书申请。\n申请人：${finalRequesterName} (${req.session.user.email})\nVID：${vid}\n\n请尽快登录系统进行审核与签发操作：\n${process.env.APP_URL || "http://localhost:52344"}`;
-            await sendMail(devEmails, subject, text);
+            sendMail(devEmails, subject, text).catch((mailErr) => {
+              console.error("[Mail] Failed to notify devs for new request:", mailErr);
+            });
           }
-        } catch (mailErr) {
-          console.error("[Mail] Failed to notify devs for new request:", mailErr);
-        }
-
-        return res.json({ id: result.lastID });
+        }).catch((dbErr) => {
+          console.error("[Mail] Failed to query devs for notification:", dbErr);
+        });
+        return;
       }
     );
 
@@ -1267,6 +1282,7 @@ ${certs.map(c => {
         const q = (req.query.q || "").trim();
         const status = (req.query.status || "issued").trim();
         const requestType = (req.query.requestType || "").trim();
+        const expiringWithin = Number(req.query.expiringWithin) || 0;
 
         const baseClauses = [
           "c.id IS NOT NULL"
@@ -1298,6 +1314,13 @@ ${certs.map(c => {
           clauses.push("(r.customer_name LIKE ? OR r.product_sku LIKE ? OR r.vid LIKE ? OR r.requester_name LIKE ? OR r.requester_email LIKE ?)");
           const like = `%${q}%`;
           params.push(like, like, like, like, like);
+        }
+
+        if (expiringWithin > 0) {
+          clauses.push(
+            `COALESCE(c.expire_at, datetime(c.created_at, '+730 days')) <= datetime('now', '+${expiringWithin} days')` +
+            ` AND COALESCE(c.expire_at, datetime(c.created_at, '+730 days')) >= datetime('now')`
+          );
         }
 
         const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -1390,18 +1413,17 @@ ${certs.map(c => {
 
         await db.run("UPDATE requests SET status = ?, issued_at = ? WHERE id = ?", [REQUEST_STATUS_ISSUED, now, req.params.id]);
 
-        // Notify the applicant that the certificate is ready
-        try {
-          if (row.requester_email) {
-            const subject = `[TLS Portal] 证书已签发 - VID: ${row.vid}`;
-            const text = `您好，${row.requester_name}：\n\n您申请的证书（VID: ${row.vid}）已经由研发团队完成签发并上传。\n\n出于安全考虑，证书文件与解压密码不在邮件中发送，请登录系统获取：\n${process.env.APP_URL || "http://localhost:52344"}`;
-            await sendMail(row.requester_email, subject, text);
-          }
-        } catch (mailErr) {
-          console.error("[Mail] Failed to notify applicant for issued certificate:", mailErr);
-        }
+        // Respond immediately; send notification in background (non-blocking)
+        res.json({ ok: true });
 
-        return res.json({ ok: true });
+        if (row.requester_email) {
+          const subject = `[TLS Portal] 证书已签发 - VID: ${row.vid}`;
+          const text = `您好，${row.requester_name}：\n\n您申请的证书（VID: ${row.vid}）已经由研发团队完成签发并上传。\n\n出于安全考虑，证书文件与解压密码不在邮件中发送，请登录系统获取：\n${process.env.APP_URL || "http://localhost:52344"}`;
+          sendMail(row.requester_email, subject, text).catch((mailErr) => {
+            console.error("[Mail] Failed to notify applicant for issued certificate:", mailErr);
+          });
+        }
+        return;
       }
     );
 
@@ -1419,6 +1441,7 @@ ${certs.map(c => {
         if (!active) return res.status(400).json({ error: "No active certificate" });
 
         // 后端强校验：证书签发超过7天不允许撤销（避免仅前端限制被绕过）
+        const role = getRole(req.session.user);
         const issuedAtValue = active.created_at || row.issued_at;
         const issuedAt = issuedAtValue ? new Date(issuedAtValue).getTime() : NaN;
         const requesterName = (row.requester_name || "").trim();

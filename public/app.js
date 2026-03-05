@@ -9,7 +9,7 @@ const myCertsPagination = document.getElementById("my-certs-pagination");
 const myCertsMessage = document.getElementById("my-certs-message");
 const myCertsSearchInput = document.getElementById("my-certs-search");
 const myCertsStatusSelect = document.getElementById("my-certs-status");
-const myCertsTypeSelect = document.getElementById("my-certs-type");
+const myCertsExpirySelect = document.getElementById("my-certs-expiry");
 const myCertsSearchBtn = document.getElementById("my-certs-search-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userMenu = document.getElementById("user-menu");
@@ -214,7 +214,7 @@ function renderMyCertsTable(items) {
     const itemRequesterEmpty = !(item.requester_email || "").trim();
     const isItemIssuedWithCert = item.status === "issued" && item.request_type !== "delete" && item.cert_id;
 
-    const canSubmitDelete =
+    const canActOnCert =
       currentUser &&
       isItemIssuedWithCert &&
       (
@@ -222,9 +222,15 @@ function renderMyCertsTable(items) {
         (isCurrentUserPrivileged && itemRequesterEmpty)
       );
 
+    const canSubmitDelete = canActOnCert;
+    const canSubmitRenew = canActOnCert;
+
     let actionContent = "<span class=\"muted\">-</span>";
-    if (canSubmitDelete) {
-      actionContent = "<button type=\"button\" class=\"btn-delete-request\">申请删除/注销</button>";
+    if (canActOnCert) {
+      actionContent = `
+        <button type="button" class="btn-renew-request">申请续期</button>
+        <button type="button" class="btn-delete-request">申请删除/注销</button>
+      `.trim();
     } else if (isCurrentUserPrivileged && !itemRequesterEmpty && item.requester_email !== (currentUser.email || "")) {
       actionContent = "<span class=\"muted\">仅申请人可发起</span>";
     }
@@ -238,6 +244,42 @@ function renderMyCertsTable(items) {
       <td><span class="status ${item.status}">${STATUS_LABELS[item.status] || item.status}</span></td>
       <td class="table-actions col-actions">${actionContent}</td>
     `;
+
+    const renewBtn = row.querySelector(".btn-renew-request");
+    if (renewBtn) {
+      renewBtn.addEventListener("click", async () => {
+        const confirmed = await Modal.confirm(
+          "申请续期",
+          "确认提交该证书的更新/续期申请吗？",
+          { confirmText: "确认提交" }
+        );
+        if (!confirmed) return;
+
+        myCertsMessage.textContent = "提交中...";
+        myCertsMessage.className = "muted";
+        try {
+          await fetchJson("/api/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerName: item.customer_name,
+              productSku: item.product_sku,
+              vid: item.vid,
+              requesterName: item.requester_name || (currentUser ? currentUser.name : ""),
+              requestType: "renew",
+              sourceRequestId: item.id
+            })
+          });
+          myCertsMessage.textContent = "续期申请已提交。";
+          myCertsMessage.className = "success";
+          await loadRequests();
+          await loadMyCertificates(1);
+        } catch (err) {
+          myCertsMessage.textContent = err.message;
+          myCertsMessage.className = "error";
+        }
+      });
+    }
 
     const deleteBtn = row.querySelector(".btn-delete-request");
     if (deleteBtn) {
@@ -290,8 +332,8 @@ async function loadMyCertificates(page = 1) {
   if (q) params.set("q", q);
   const status = myCertsStatusSelect.value;
   if (status) params.set("status", status);
-  const requestType = myCertsTypeSelect.value;
-  if (requestType) params.set("requestType", requestType);
+  const expiry = myCertsExpirySelect.value;
+  if (expiry && expiry !== "all") params.set("expiringWithin", expiry);
 
   try {
     const data = await fetchJson(`/api/my-certificates?${params.toString()}`);
@@ -413,6 +455,6 @@ myCertsSearchInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") loadMyCertificates(1);
 });
 myCertsStatusSelect.addEventListener("change", () => loadMyCertificates(1));
-myCertsTypeSelect.addEventListener("change", () => loadMyCertificates(1));
+myCertsExpirySelect.addEventListener("change", () => loadMyCertificates(1));
 
 init();
