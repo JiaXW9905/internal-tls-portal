@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTC AI架构设计</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .arch-section { margin-top: 20px; }
+    .arch-section h3 { margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; }
+
+    .topology-wrap { position: relative; margin: 16px 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: auto; }
+    .topology-wrap canvas { display: block; width: 100%; }
+    .download-btn { position: absolute; top: 8px; right: 8px; background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .download-btn:hover { background: #2563eb; }
+
+    .fw-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; }
+    .fw-table th { background: #1e40af; color: white; padding: 10px 12px; text-align: left; }
+    .fw-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+    .fw-table tr:nth-child(even) td { background: #f8fafc; }
+
+    .mgmt-node { margin: 16px 0; }
+    .mgmt-node h4 { margin: 0 0 8px; }
+    .mgmt-node pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.6; }
+
+    .raw-json { margin-top: 20px; }
+    .raw-json summary { cursor: pointer; color: #64748b; font-size: 0.9rem; }
+    .raw-json pre { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 400px; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">产业互联网内部门户</div>
+        <div class="brand-subtitle">Internal Portal</div>
+      </div>
+      <nav class="nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="content">
+      <header>
+        <div class="header-row">
+          <div>
+            <h1>RTC AI架构设计</h1>
+            <p>基于资源评估自动生成部署架构方案</p>
+          </div>
+          <div class="user-menu" id="user-menu">
+            <button id="user-menu-btn" type="button"></button>
+            <div class="user-menu-dropdown" id="user-menu-dropdown">
+              <a href="/account">账号管理</a>
+              <button id="logout-btn" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div class="panel">
+          <h2>项目信息</h2>
+          <div id="project-info" class="muted">加载中...</div>
+        </div>
+
+        <div class="panel">
+          <h2>AI架构生成</h2>
+          <p class="muted">请确保已在计算器中完成资源评估。</p>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <button id="generate-btn" class="btn-primary">生成AI架构</button>
+            <span id="generate-message" class="muted"></span>
+          </div>
+        </div>
+
+        <!-- 架构结果区域 -->
+        <div id="architecture-result" style="display:none;">
+          <div class="panel" id="section-summary"></div>
+          <div class="panel" id="section-topology"></div>
+          <div class="panel" id="section-firewall"></div>
+          <div class="panel" id="section-mgmt"></div>
+          <div class="panel" id="section-nodes"></div>
+          <div class="panel" id="section-raw"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/version.js"></script>
+  <script src="/components/sidebar-nav.js"></script>
+  <script src="/rtc-deployment/topology-renderer.js"></script>
+  <script src="/rtc-deployment/architect.js"></script>
+</body>
+</html>

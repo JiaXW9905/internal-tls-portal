@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>项目详情 - RTC部署管理</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
+    .detail-item { background: #f8fafc; border-radius: 6px; padding: 10px 14px; }
+    .detail-item .label { color: #64748b; font-size: 0.85rem; margin-bottom: 2px; }
+    .detail-item .value { font-weight: 600; font-size: 1rem; }
+
+    .resource-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 14px 0; }
+    .resource-card { text-align: center; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+    .resource-card .card-value { font-size: 2rem; font-weight: 700; color: #3b82f6; }
+    .resource-card .card-label { color: #64748b; font-size: 0.85rem; margin-top: 4px; }
+
+    .topology-wrap { position: relative; margin: 16px 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: auto; }
+    .topology-wrap canvas { display: block; width: 100%; }
+    .download-btn { position: absolute; top: 8px; right: 8px; background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .download-btn:hover { background: #2563eb; }
+
+    .fw-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .fw-table th { background: #1e40af; color: white; padding: 10px 12px; text-align: left; }
+    .fw-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+    .fw-table tr:nth-child(even) td { background: #f8fafc; }
+
+    .mgmt-node { margin: 14px 0; }
+    .mgmt-node h4 { margin: 0 0 6px; }
+    .mgmt-node pre { background: #1e293b; color: #e2e8f0; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+
+    .node-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 14px 0; }
+    .node-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; }
+    .node-card h4 { margin: 0 0 8px; }
+
+    .action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+    .empty-state { text-align: center; padding: 30px; color: #94a3b8; }
+
+    details.raw-json { margin-top: 16px; }
+    details.raw-json summary { cursor: pointer; color: #64748b; font-size: 0.9rem; }
+    details.raw-json pre { background: #f8fafc; border: 1px solid #e5e7eb; padding: 14px; border-radius: 8px; overflow-x: auto; max-height: 400px; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">产业互联网内部门户</div>
+        <div class="brand-subtitle">Internal Portal</div>
+      </div>
+      <nav class="nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="content">
+      <header>
+        <div class="header-row">
+          <div>
+            <h1 id="page-title">项目详情</h1>
+            <p id="page-subtitle">查看项目完整信息与架构方案</p>
+          </div>
+          <div class="user-menu" id="user-menu">
+            <button id="user-menu-btn" type="button"></button>
+            <div class="user-menu-dropdown" id="user-menu-dropdown">
+              <a href="/account">账号管理</a>
+              <button id="logout-btn" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div id="loading-msg" class="panel"><p class="muted">加载中...</p></div>
+
+        <!-- 项目基本信息 -->
+        <div class="panel" id="section-project" style="display:none;">
+          <h2>项目信息</h2>
+          <div id="project-info"></div>
+          <div class="action-bar" id="project-actions"></div>
+        </div>
+
+        <!-- 资源评估 -->
+        <div class="panel" id="section-resource" style="display:none;">
+          <h2>资源评估结果</h2>
+          <div id="resource-info"></div>
+        </div>
+
+        <!-- 架构方案 -->
+        <div id="section-arch" style="display:none;">
+          <div class="panel" id="arch-summary"></div>
+          <div class="panel" id="arch-topology"></div>
+          <div class="panel" id="arch-firewall"></div>
+          <div class="panel" id="arch-mgmt"></div>
+          <div class="panel" id="arch-nodes"></div>
+          <div class="panel" id="arch-raw"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/version.js"></script>
+  <script src="/components/sidebar-nav.js"></script>
+  <script src="/rtc-deployment/topology-renderer.js"></script>
+  <script src="/rtc-deployment/detail.js"></script>
+</body>
+</html>

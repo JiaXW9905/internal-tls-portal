@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTC部署项目</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">产业互联网内部门户</div>
+        <div class="brand-subtitle">Internal Portal</div>
+      </div>
+      <nav class="nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="content">
+      <header>
+        <div class="header-row">
+          <div>
+            <h1>🚀 RTC部署管理</h1>
+            <p>管理RTC私有化部署项目</p>
+          </div>
+          <div class="user-menu" id="user-menu">
+            <button id="user-menu-btn" type="button"></button>
+            <div class="user-menu-dropdown" id="user-menu-dropdown">
+              <a href="/account">账号管理</a>
+              <button id="logout-btn" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <!-- 操作栏 -->
+        <div class="panel">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <a href="/rtc-deployment/calculator" class="btn-secondary">🧮 资源计算器（快速计算）</a>
+            </div>
+            <a href="/rtc-deployment/create" class="btn-primary">+ 创建部署项目</a>
+          </div>
+        </div>
+
+        <!-- 项目列表 -->
+        <div class="panel">
+          <h2>项目列表</h2>
+          <div id="projects-message" class="muted">加载中...</div>
+          <div class="table-wrap">
+            <table class="table" id="projects-table" style="display:none;">
+              <thead>
+                <tr>
+                  <th>项目名称</th>
+                  <th>客户名称</th>
+                  <th>部署类型</th>
+                  <th>并发用户</th>
+                  <th>频道数</th>
+                  <th>状态</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="projects-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/version.js"></script>
+  <script src="/components/sidebar-nav.js"></script>
+  <script src="/rtc-deployment/projects.js"></script>
+</body>
+</html>

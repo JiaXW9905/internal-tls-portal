@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTC资源计算器</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .calculator-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .scenario-templates {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .template-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .template-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+    }
+
+    .template-card.active {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .template-card .icon {
+      font-size: 3rem;
+      margin-bottom: 8px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .result-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .result-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .card-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #3b82f6;
+      margin-bottom: 8px;
+    }
+
+    .card-label {
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    .card-detail {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    .recommendations {
+      background: #f8fafc;
+      border-left: 4px solid #3b82f6;
+      padding: 16px;
+      margin: 20px 0;
+    }
+
+    .recommendation-item {
+      padding: 8px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .recommendation-item:last-child {
+      border-bottom: none;
+    }
+
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-error { background: #fee2e2; color: #991b1b; }
+    .badge-info { background: #dbeafe; color: #1e40af; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">产业互联网内部门户</div>
+        <div class="brand-subtitle">Internal Portal</div>
+      </div>
+      <nav class="nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="content">
+      <header>
+        <div class="header-row">
+          <div>
+            <h1>🧮 RTC资源计算器</h1>
+            <p>智能计算RTC私有化部署所需资源</p>
+          </div>
+          <div class="user-menu" id="user-menu">
+            <button id="user-menu-btn" type="button"></button>
+            <div class="user-menu-dropdown" id="user-menu-dropdown">
+              <a href="/account">账号管理</a>
+              <button id="logout-btn" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="calculator-container">
+        <!-- 场景模板 -->
+        <section class="panel">
+          <h2>选择场景模板</h2>
+          <div class="scenario-templates">
+            <div class="template-card active" data-template="1v1+rec">
+              <div class="icon">👥</div>
+              <h4>1v1 + 录制</h4>
+              <p>一对一通话</p>
+            </div>
+            <div class="template-card" data-template="3v7+rec">
+              <div class="icon">🎓</div>
+              <h4>3v7 + 录制</h4>
+              <p>小班课场景</p>
+            </div>
+            <div class="template-card" data-template="broadcast">
+              <div class="icon">📺</div>
+              <h4>大型直播</h4>
+              <p>互动直播</p>
+            </div>
+            <div class="template-card" data-template="custom">
+              <div class="icon">⚙️</div>
+              <h4>自定义</h4>
+              <p>高级配置</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 参数输入 -->
+        <section class="panel">
+          <h2>配置参数</h2>
+          <div class="form-grid">
+            <div>
+              <label>并发用户数</label>
+              <input type="number" id="concurrent-users" value="1000" min="1">
+              <span class="muted">同时在线最大用户数</span>
+            </div>
+            
+            <div>
+              <label>频道数量</label>
+              <input type="number" id="channels" value="200" min="1">
+              <span class="muted">同时进行的频道数</span>
+            </div>
+            
+            <div>
+              <label>是否包含视频</label>
+              <select id="has-video">
+                <option value="true">是</option>
+                <option value="false">否（纯音频）</option>
+              </select>
+            </div>
+            
+            <div id="video-options">
+              <label>视频分辨率</label>
+              <select id="video-resolution">
+                <option value="360p">360p (640x360)</option>
+                <option value="720p" selected>720p (1280x720)</option>
+                <option value="1080p">1080p (1920x1080)</option>
+              </select>
+            </div>
+            
+            <div id="fps-option">
+              <label>帧率</label>
+              <select id="fps">
+                <option value="15" selected>15 FPS</option>
+                <option value="24">24 FPS</option>
+                <option value="30">30 FPS</option>
+              </select>
+            </div>
+            
+            <div>
+              <label>部署类型</label>
+              <select id="deployment-type">
+                <option value="pure">纯私有部署</option>
+                <option value="hybrid" selected>混合云部署</option>
+              </select>
+            </div>
+            
+            <div>
+              <label>冗余系数 (%)</label>
+              <input type="number" id="redundancy" value="30" min="0" max="100">
+              <span class="muted">建议30%</span>
+            </div>
+          </div>
+
+          <button type="button" onclick="calculate()" class="btn-primary">
+            🧮 计算资源需求
+          </button>
+          <div id="calc-message" class="muted"></div>
+        </section>
+
+        <!-- 计算结果 -->
+        <section class="panel" id="results-section" style="display: none;">
+          <h2>📊 资源评估结果</h2>
+          
+          <div class="result-cards" id="result-cards"></div>
+
+          <div id="recommendations-section"></div>
+
+          <div class="actions" style="margin-top: 20px;">
+            <button onclick="exportReport()" class="btn-secondary">
+              📄 导出资源报告
+            </button>
+            <button onclick="generateArchitecture()" class="btn-primary">
+              🤖 下一步: AI架构设计
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/version.js"></script>
+  <script src="/components/sidebar-nav.js"></script>
+  <script src="/rtc-deployment/calculator.js"></script>
+</body>
+</html>

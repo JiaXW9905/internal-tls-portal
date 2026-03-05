@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>创建RTC部署项目</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">产业互联网内部门户</div>
+        <div class="brand-subtitle">Internal Portal</div>
+      </div>
+      <nav class="nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="content">
+      <header>
+        <div class="header-row">
+          <div>
+            <h1>+ 创建部署项目</h1>
+            <p>填写项目信息，开始资源评估和AI架构设计</p>
+          </div>
+          <div class="user-menu" id="user-menu">
+            <button id="user-menu-btn" type="button"></button>
+            <div class="user-menu-dropdown" id="user-menu-dropdown">
+              <a href="/account">账号管理</a>
+              <button id="logout-btn" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div class="panel">
+          <form id="create-form">
+            <div class="grid">
+              <div>
+                <label for="project_name">项目名称 *</label>
+                <input id="project_name" name="project_name" required placeholder="例：XX银行私有化部署">
+              </div>
+              <div>
+                <label for="customer_name">客户名称 *</label>
+                <input id="customer_name" name="customer_name" required placeholder="例：某某银行股份有限公司">
+              </div>
+              <div>
+                <label for="deployment_type">部署类型 *</label>
+                <select id="deployment_type" name="deployment_type" required>
+                  <option value="pure">纯私有部署</option>
+                  <option value="hybrid">混合云部署</option>
+                </select>
+              </div>
+              <div>
+                <label for="concurrent_users">并发用户数 *</label>
+                <input type="number" id="concurrent_users" name="concurrent_users" required min="1" placeholder="例：1000">
+              </div>
+              <div>
+                <label for="channels">频道数量 *</label>
+                <input type="number" id="channels" name="channels" required min="1" placeholder="例：200">
+              </div>
+              <div>
+                <label for="channel_model">频道模型 *</label>
+                <select id="channel_model" name="channel_model" required>
+                  <option value="1v1+rec">1v1 + 录制</option>
+                  <option value="3v7+rec">3v7 + 录制（小班课）</option>
+                  <option value="broadcast">大型直播</option>
+                  <option value="custom">自定义</option>
+                </select>
+              </div>
+              <div>
+                <label for="has_video">媒体类型</label>
+                <select id="has_video" name="has_video">
+                  <option value="1">音视频</option>
+                  <option value="0">纯音频</option>
+                </select>
+              </div>
+              <div>
+                <label for="video_resolution">视频分辨率</label>
+                <select id="video_resolution" name="video_resolution">
+                  <option value="360p">360p</option>
+                  <option value="720p" selected>720p（推荐）</option>
+                  <option value="1080p">1080p</option>
+                </select>
+              </div>
+              <div>
+                <label for="network_type">网络环境</label>
+                <select id="network_type" name="network_type">
+                  <option value="intranet">纯内网</option>
+                  <option value="dmz">DMZ隔离区</option>
+                  <option value="internet">可访问公网</option>
+                </select>
+              </div>
+              <div>
+                <label for="sla_requirement">SLA要求</label>
+                <select id="sla_requirement" name="sla_requirement">
+                  <option value="99%">99%</option>
+                  <option value="99.9%" selected>99.9%</option>
+                  <option value="99.99%">99.99%</option>
+                </select>
+              </div>
+              <div>
+                <label for="appid">App ID（可选）</label>
+                <input id="appid" name="appid" placeholder="例：d3f1c8f2e2b34d7f9f...">
+              </div>
+              <div>
+                <label for="appCert">App Cert（可选）</label>
+                <input id="appCert" name="appCert" placeholder="例：7f6c9f3e2a4b...（敏感信息）">
+              </div>
+            </div>
+
+            <!-- 网络安全要求（可选） -->
+            <fieldset style="margin-top: 20px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+              <legend style="font-weight: 600; padding: 0 8px;">网络安全要求（可选）</legend>
+              <div style="margin-bottom: 12px;">
+                <label for="network_security_template">常见配置模板</label>
+                <select id="network_security_template" name="network_security_template">
+                  <option value="">不使用模板（手动填写）</option>
+                  <option value="strict_intranet">模板A：纯内网 + 网闸隔离 + 严格防火墙</option>
+                  <option value="proxy_outbound">模板B：内网 + 出口代理 + 防火墙放通</option>
+                  <option value="dmz_bridge">模板C：DMZ桥接 + 防火墙分区策略</option>
+                </select>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_air_gap" name="has_air_gap" value="1">
+                    <span>网闸隔离（内外网通过安全隔离网闸连接）</span>
+                  </label>
+                  <input type="text" id="air_gap_description" name="air_gap_description"
+                    placeholder="描述网闸部署位置与策略..." style="margin-top:6px; display:none;">
+                </div>
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_proxy" name="has_proxy" value="1">
+                    <span>需要通过代理访问外部网络</span>
+                  </label>
+                  <input type="text" id="proxy_address" name="proxy_address"
+                    placeholder="代理地址，例：http://proxy.bank.cn:8080" style="margin-top:6px; display:none;">
+                </div>
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_firewall" name="has_firewall" value="1">
+                    <span>防火墙策略限制（需要申请端口放通）</span>
+                  </label>
+                  <input type="text" id="firewall_description" name="firewall_description"
+                    placeholder="描述防火墙策略与审批流程..." style="margin-top:6px; display:none;">
+                </div>
+              </div>
+              <div style="margin-top: 12px; font-size: 12px; color: #64748b; line-height: 1.6;">
+                <div><strong>自定义填写规范示例：</strong></div>
+                <div>1) 网闸说明：建议包含“部署位置 + 连接方向 + 审批策略”，例如：<code>业务区与DMZ之间部署天融信网闸，仅允许443单向出站，变更需安全审批</code></div>
+                <div>2) 代理地址：统一使用 URL 格式，例如：<code>http://proxy.bank.cn:8080</code></div>
+                <div>3) 防火墙说明：建议包含“源区/目标区 + 协议端口 + 用途”，例如：<code>APP区 -> RTC区 UDP 10000-20000 用于媒体流</code></div>
+              </div>
+            </fieldset>
+
+            <div style="margin-top: 16px;">
+              <label for="special_requirements">特殊需求说明</label>
+              <textarea id="special_requirements" name="special_requirements" rows="3"
+                placeholder="例：需要支持IPv6、有高可用要求、特殊安全规范等..."></textarea>
+            </div>
+
+            <div style="margin-top: 24px; display: flex; gap: 12px;">
+              <button type="submit" class="btn-primary">创建项目</button>
+              <a href="/rtc-deployment" class="btn-secondary">取消</a>
+            </div>
+            <div id="form-message" class="muted" style="margin-top: 12px;"></div>
+          </form>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/version.js"></script>
+  <script src="/components/sidebar-nav.js"></script>
+  <script src="/rtc-deployment/create.js"></script>
+</body>
+</html>

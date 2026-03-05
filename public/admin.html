@@ -10,15 +10,11 @@
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-title">TLS 证书门户</div>
-          <div class="brand-subtitle">内部使用</div>
+          <div class="brand-title">产业互联网内部门户</div>
+          <div class="brand-subtitle">Internal Portal</div>
         </div>
-        <nav class="nav">
-          <a id="nav-requests" href="/">证书申请</a>
-          <a id="nav-admin" href="/admin" class="active">证书签发</a>
-          <a id="nav-overview" href="/overview">证书总览</a>
-          <a id="nav-users" href="/users" style="display: none;">用户与权限</a>
-          <a id="nav-settings" href="/settings" style="display: none;">系统设置</a>
+        <nav class="nav" id="sidebar-nav">
+          <!-- 导航菜单将由 sidebar-nav.js 动态渲染 -->
         </nav>
       </aside>
       <div class="content">
@@ -68,6 +64,7 @@
     </div>
     <script src="/version.js"></script>
     <script src="/modal.js"></script>
+    <script src="/components/sidebar-nav.js"></script>
     <script src="/admin.js"></script>
   </body>
 </html>

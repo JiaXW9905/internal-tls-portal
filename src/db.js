@@ -3,6 +3,7 @@ const fs = require("fs");
 const readline = require("readline");
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
+const { RBACManager } = require("./rbac-manager");
 
 const dataDir = path.join(__dirname, "..", "data");
 const dbPath = path.join(dataDir, "app.db");
@@ -129,7 +130,177 @@ async function initDb() {
   await migrateLegacyCertificates(db);
   await markLegacyExpiredCertificatesAsUpdated(db);
 
+  // 初始化RBAC系统
+  await initRBACSystem(db);
+
   return db;
+}
+
+async function initRBACSystem(db) {
+  console.log("[RBAC] Checking RBAC system initialization...");
+  
+  // 检查RBAC表是否已存在
+  const tableCheck = await db.get(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='portal_services'"
+  );
+  
+  if (!tableCheck) {
+    console.log("[RBAC] RBAC tables not found. Initializing...");
+    const rbacManager = new RBACManager(db);
+    
+    try {
+      // 初始化RBAC表结构和TLS服务权限
+      await rbacManager.initialize();
+      
+      // 从旧的role字段迁移到RBAC体系
+      await rbacManager.migrateFromLegacyRoles();
+      
+      console.log("[RBAC] RBAC system initialized successfully.");
+    } catch (err) {
+      console.error("[RBAC] Failed to initialize RBAC system:", err);
+      throw err;
+    }
+  } else {
+    console.log("[RBAC] RBAC tables already exist. Skipping initialization.");
+    
+    // 检查是否需要迁移未迁移的用户
+    const rbacManager = new RBACManager(db);
+    const unmigrated = await db.get(
+      `SELECT COUNT(*) as count FROM users u
+       WHERE u.role IS NOT NULL 
+       AND NOT EXISTS (
+         SELECT 1 FROM user_roles ur
+         JOIN roles r ON ur.role_id = r.id
+         WHERE ur.user_id = u.id AND r.service_id = 'tls-cert'
+       )`
+    );
+    
+    if (unmigrated && unmigrated.count > 0) {
+      console.log(`[RBAC] Found ${unmigrated.count} unmigrated users. Migrating...`);
+      await rbacManager.migrateFromLegacyRoles();
+    }
+    
+    // 检查并初始化RTC服务
+    await initRTCDeploymentService(db);
+  }
+}
+
+async function initRTCDeploymentService(db) {
+  console.log("[RTC] Checking RTC Deployment service initialization...");
+  
+  // 检查RTC服务是否已注册
+  const rtcService = await db.get(
+    "SELECT id FROM portal_services WHERE id = 'rtc-deployment'"
+  );
+  
+  if (!rtcService) {
+    console.log("[RTC] RTC Deployment service not found. Initializing...");
+    
+    try {
+      // 读取并执行RTC服务初始化脚本
+      const fs = require('fs');
+      const path = require('path');
+      const initSQL = fs.readFileSync(
+        path.join(__dirname, 'migrations', '003-rtc-deployment-service.sql'),
+        'utf-8'
+      );
+      
+      await db.exec(initSQL);
+      console.log("[RTC] RTC Deployment service initialized successfully.");
+    } catch (err) {
+      console.error("[RTC] Failed to initialize RTC service:", err);
+      // 不抛出错误，允许系统继续运行
+    }
+  } else {
+    console.log("[RTC] RTC Deployment service already exists.");
+  }
+
+  // 确保已有用户获得默认RTC角色（避免新服务访问被拒绝）
+  await ensureRTCDeploymentDefaultRoles(db);
+
+  // 增量迁移：为 rtc_deployment_projects 增加 network_security 列
+  const projCols = await db.all("PRAGMA table_info(rtc_deployment_projects)");
+  const hasNetSec = projCols.some((c) => c.name === "network_security");
+  if (!hasNetSec) {
+    await db.exec("ALTER TABLE rtc_deployment_projects ADD COLUMN network_security TEXT");
+    console.log("[RTC] Added network_security column to rtc_deployment_projects.");
+  }
+
+  const hasAppId = projCols.some((c) => c.name === "appid");
+  if (!hasAppId) {
+    await db.exec("ALTER TABLE rtc_deployment_projects ADD COLUMN appid TEXT");
+    console.log("[RTC] Added appid column to rtc_deployment_projects.");
+  }
+
+  const hasAppCert = projCols.some((c) => c.name === "app_cert");
+  if (!hasAppCert) {
+    await db.exec("ALTER TABLE rtc_deployment_projects ADD COLUMN app_cert TEXT");
+    console.log("[RTC] Added app_cert column to rtc_deployment_projects.");
+  }
+
+  // 增量迁移：为 rtc_ai_architectures 增加版本管理与布局字段
+  const archCols = await db.all("PRAGMA table_info(rtc_ai_architectures)");
+  const hasSourceType = archCols.some((c) => c.name === "source_type");
+  if (!hasSourceType) {
+    await db.exec("ALTER TABLE rtc_ai_architectures ADD COLUMN source_type TEXT DEFAULT 'ai_generated'");
+    await db.run("UPDATE rtc_ai_architectures SET source_type = 'ai_generated' WHERE source_type IS NULL");
+    console.log("[RTC] Added source_type column to rtc_ai_architectures.");
+  }
+
+  const hasParentArch = archCols.some((c) => c.name === "parent_architecture_id");
+  if (!hasParentArch) {
+    await db.exec("ALTER TABLE rtc_ai_architectures ADD COLUMN parent_architecture_id INTEGER");
+    console.log("[RTC] Added parent_architecture_id column to rtc_ai_architectures.");
+  }
+
+  const hasLayoutJson = archCols.some((c) => c.name === "layout_json");
+  if (!hasLayoutJson) {
+    await db.exec("ALTER TABLE rtc_ai_architectures ADD COLUMN layout_json TEXT");
+    console.log("[RTC] Added layout_json column to rtc_ai_architectures.");
+  }
+}
+
+async function ensureRTCDeploymentDefaultRoles(db) {
+  const roleMapping = {
+    admin: 'rtc-sa',
+    dev: 'rtc-engineer',
+    product: 'rtc-viewer',
+    service: 'rtc-viewer'
+  };
+
+  const roles = await db.all(
+    "SELECT id, code FROM roles WHERE service_id = 'rtc-deployment'"
+  );
+  if (!roles.length) return;
+
+  const roleIdByCode = new Map(roles.map((role) => [role.code, role.id]));
+  const users = await db.all(
+    "SELECT id, role FROM users WHERE role IS NOT NULL"
+  );
+  const now = new Date().toISOString();
+  let grantedCount = 0;
+
+  for (const user of users) {
+    const roleCode = roleMapping[user.role];
+    if (!roleCode) continue;
+    const roleId = roleIdByCode.get(roleCode);
+    if (!roleId) continue;
+
+    const result = await db.run(
+      "INSERT OR IGNORE INTO user_roles (user_id, role_id, granted_at) VALUES (?, ?, ?)",
+      user.id,
+      roleId,
+      now
+    );
+
+    if (result && result.changes > 0) {
+      grantedCount += 1;
+    }
+  }
+
+  if (grantedCount > 0) {
+    console.log(`[RTC] Default RTC roles granted to ${grantedCount} users.`);
+  }
 }
 
 async function migrateLegacyCertificates(db) {
