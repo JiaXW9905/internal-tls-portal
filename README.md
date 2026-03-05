@@ -3,7 +3,7 @@
 Industrial Internet Internal Portal - 企业内部服务统一门户
 
 ## Current Version
-- App version: `1.0.1`
+- App version: `1.0.2`
 - Runtime port: `52344`
 - Architecture: Portal + Multi-Service + RBAC
 
@@ -81,7 +81,7 @@ Output: `internal-tls-portal-<version>.tar.gz`
   - `docs/en/Developer-Runbook.md`
   - `docs/en/LLM-Context-Prompt.md`
 
-## What's New in v1.0.1
+## What's New in v1.0.2
 - 🎉 **Portal Architecture**: 从单一TLS系统升级为多服务门户
 - 🛡️ **RBAC System**: 完整的权限管理和审计体系
 - 📱 **Hierarchical Navigation**: 可展开/折叠的分层级侧边栏
