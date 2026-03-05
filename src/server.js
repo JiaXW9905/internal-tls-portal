@@ -1098,10 +1098,13 @@ ${certs.map(c => {
 
     // --- Request Routes ---
 
-    async function fetchRequestsWithActiveCert(whereClause, params, limitOffset = "") {
+    async function fetchRequestsWithActiveCert(
+      whereClause,
+      params,
+      limitOffset = "",
+      orderByClause = "ORDER BY datetime(r.created_at) DESC, r.id DESC"
+    ) {
       // ORDER BY 必须在 LIMIT/OFFSET 之前
-      const orderByClause = "ORDER BY datetime(r.created_at) DESC, r.id DESC";
-
       return db.all(
         `
           SELECT
@@ -1387,16 +1390,31 @@ ${certs.map(c => {
       return { clauses, params, page, pageSize, offset };
     }
 
+    function getOverviewOrderByClause() {
+      // 证书总览默认按过期时间升序；无过期时间的数据排在最后。
+      return `ORDER BY
+        CASE WHEN c.expire_at IS NULL THEN 1 ELSE 0 END ASC,
+        datetime(c.expire_at) ASC,
+        datetime(r.created_at) DESC,
+        r.id DESC`;
+    }
+
     app.get("/api/overview", requireRole([ROLE_ADMIN, ROLE_DEV, ROLE_PRODUCT]), async (req, res) => {
       const { clauses, params, page, pageSize, offset } = buildOverviewQuery(req);
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      const orderByClause = getOverviewOrderByClause();
 
       // Use fetchRequestsWithActiveCert for consistent data with certificate info
       const countQuery = `SELECT COUNT(*) as count FROM requests r ${where}`;
       const countRow = await db.get(countQuery, params);
 
       // Get paginated rows with certificate info (LIMIT/OFFSET 必须在 ORDER BY 之后)
-      const rows = await fetchRequestsWithActiveCert(where, [...params, pageSize, offset], " LIMIT ? OFFSET ?");
+      const rows = await fetchRequestsWithActiveCert(
+        where,
+        [...params, pageSize, offset],
+        " LIMIT ? OFFSET ?",
+        orderByClause
+      );
 
       return res.json({ items: rows, total: countRow ? countRow.count : 0, page, pageSize });
     });
@@ -1404,8 +1422,9 @@ ${certs.map(c => {
     app.get("/api/overview/export", requireRole([ROLE_ADMIN, ROLE_DEV, ROLE_PRODUCT]), async (req, res) => {
       const { clauses, params } = buildOverviewQuery(req);
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      const orderByClause = getOverviewOrderByClause();
       // Use fetchRequestsWithActiveCert for consistent data with certificate info
-      const rows = await fetchRequestsWithActiveCert(where, params);
+      const rows = await fetchRequestsWithActiveCert(where, params, "", orderByClause);
       
       const escapeCsv = (value) => {
         if (value === null || value === undefined) return "";
@@ -1479,6 +1498,14 @@ ${certs.map(c => {
     app.get("/rtc-deployment/calculator", (req, res) => {
       if (!req.session.user) return res.redirect("/login");
       res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "calculator.html"));
+    });
+    app.get("/rtc-deployment/architect", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "architect.html"));
+    });
+    app.get("/rtc-deployment/detail", (req, res) => {
+      if (!req.session.user) return res.redirect("/login");
+      res.sendFile(path.join(__dirname, "..", "public", "rtc-deployment", "detail.html"));
     });
 
     app.get("/", (req, res) => {

@@ -100,7 +100,61 @@
                   <option value="99.99%">99.99%</option>
                 </select>
               </div>
+              <div>
+                <label for="appid">App ID（可选）</label>
+                <input id="appid" name="appid" placeholder="例：d3f1c8f2e2b34d7f9f...">
+              </div>
+              <div>
+                <label for="appCert">App Cert（可选）</label>
+                <input id="appCert" name="appCert" placeholder="例：7f6c9f3e2a4b...（敏感信息）">
+              </div>
             </div>
+
+            <!-- 网络安全要求（可选） -->
+            <fieldset style="margin-top: 20px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+              <legend style="font-weight: 600; padding: 0 8px;">网络安全要求（可选）</legend>
+              <div style="margin-bottom: 12px;">
+                <label for="network_security_template">常见配置模板</label>
+                <select id="network_security_template" name="network_security_template">
+                  <option value="">不使用模板（手动填写）</option>
+                  <option value="strict_intranet">模板A：纯内网 + 网闸隔离 + 严格防火墙</option>
+                  <option value="proxy_outbound">模板B：内网 + 出口代理 + 防火墙放通</option>
+                  <option value="dmz_bridge">模板C：DMZ桥接 + 防火墙分区策略</option>
+                </select>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_air_gap" name="has_air_gap" value="1">
+                    <span>网闸隔离（内外网通过安全隔离网闸连接）</span>
+                  </label>
+                  <input type="text" id="air_gap_description" name="air_gap_description"
+                    placeholder="描述网闸部署位置与策略..." style="margin-top:6px; display:none;">
+                </div>
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_proxy" name="has_proxy" value="1">
+                    <span>需要通过代理访问外部网络</span>
+                  </label>
+                  <input type="text" id="proxy_address" name="proxy_address"
+                    placeholder="代理地址，例：http://proxy.bank.cn:8080" style="margin-top:6px; display:none;">
+                </div>
+                <div>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="has_firewall" name="has_firewall" value="1">
+                    <span>防火墙策略限制（需要申请端口放通）</span>
+                  </label>
+                  <input type="text" id="firewall_description" name="firewall_description"
+                    placeholder="描述防火墙策略与审批流程..." style="margin-top:6px; display:none;">
+                </div>
+              </div>
+              <div style="margin-top: 12px; font-size: 12px; color: #64748b; line-height: 1.6;">
+                <div><strong>自定义填写规范示例：</strong></div>
+                <div>1) 网闸说明：建议包含“部署位置 + 连接方向 + 审批策略”，例如：<code>业务区与DMZ之间部署天融信网闸，仅允许443单向出站，变更需安全审批</code></div>
+                <div>2) 代理地址：统一使用 URL 格式，例如：<code>http://proxy.bank.cn:8080</code></div>
+                <div>3) 防火墙说明：建议包含“源区/目标区 + 协议端口 + 用途”，例如：<code>APP区 -> RTC区 UDP 10000-20000 用于媒体流</code></div>
+              </div>
+            </fieldset>
 
             <div style="margin-top: 16px;">
               <label for="special_requirements">特殊需求说明</label>

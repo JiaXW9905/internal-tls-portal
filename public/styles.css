@@ -938,3 +938,38 @@ input:checked + .slider:before { transform: translateX(20px); }
   border-radius: 99px;
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
 }
+
+/* Topology fullscreen rendering */
+.topology-wrap:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.topology-wrap:fullscreen canvas {
+  margin: auto;
+}
+
+.topology-wrap:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.topology-wrap:-webkit-full-screen canvas {
+  margin: auto;
+}

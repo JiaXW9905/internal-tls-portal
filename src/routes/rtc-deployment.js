@@ -6,6 +6,176 @@ const { RTCResourceCalculator } = require('../rtc-resource-calculator');
 const { QwenAIClient } = require('../qwen-ai-client');
 const { RTCConfigGenerator } = require('../rtc-config-generator');
 
+function parseNetworkSecurity(project) {
+  if (!project || !project.network_security) return null;
+  try {
+    return JSON.parse(project.network_security);
+  } catch (_) {
+    return null;
+  }
+}
+
+function rebuildArchitectureDerivedFields(architecture, project, forceRebuild = false) {
+  const arch = architecture && typeof architecture === 'object' ? architecture : {};
+  const nodes = Array.isArray(arch.nodes) ? arch.nodes : [];
+  const netSec = parseNetworkSecurity(project);
+
+  const normalizedNodes = nodes.map((n, idx) => ({
+    node_id: n.node_id || `node-${idx + 1}`,
+    hostname: n.hostname || n.node_id || `node-${idx + 1}`,
+    ip_address: n.ip_address || '',
+    role: n.role || 'media-services',
+    role_description: n.role_description || n.role || '',
+    services: Array.isArray(n.services) ? n.services : [],
+    instance_counts: {
+      udp_edge_cnt: Number(n.instance_counts?.udp_edge_cnt || 0),
+      aut_edge_cnt: Number(n.instance_counts?.aut_edge_cnt || 0),
+      web_edge_cnt: Number(n.instance_counts?.web_edge_cnt || 0)
+    },
+    resources: n.resources || {}
+  }));
+
+  arch.nodes = normalizedNodes;
+
+  // 拓扑图默认结构（扁平化：不再使用 zones 层级）
+  if (forceRebuild || !arch.topology || !Array.isArray(arch.topology.nodes) || arch.topology.nodes.length === 0) {
+    arch.topology = {
+      nodes: normalizedNodes.map((n) => ({
+        node_id: n.node_id,
+        hostname: n.hostname,
+        services: n.services,
+        role: n.role
+      })),
+      connections: []
+    };
+  }
+
+  if (forceRebuild || !Array.isArray(arch.topology.connections) || arch.topology.connections.length === 0) {
+    arch.topology.connections = [
+      { from_service: 'web_edge', to_service: 'local_balancer', protocol: 'tcp', port: '2700', description: 'tcp:2700', flow_type: 'control' },
+      { from_service: 'web_edge', to_service: 'local_ap', protocol: 'tcp', port: '8101', description: 'tcp:8101', flow_type: 'control' },
+      { from_service: 'web_edge', to_service: 'vosync', protocol: 'tcp', port: '3500', description: 'tcp:3500', flow_type: 'control' },
+      { from_service: 'web_edge', to_service: 'cap_sync', protocol: 'tcp', port: '3501', description: 'tcp:3501', flow_type: 'control' },
+      { from_service: 'web_edge', to_service: 'arb', protocol: 'tcp', port: '9900', description: 'tcp:9900', flow_type: 'control' },
+      { from_service: 'web_edge', to_service: 'event_collector', protocol: 'tcp', port: '4301', description: 'tcp:4301', flow_type: 'mgmt' },
+
+      { from_service: 'udp_edge', to_service: 'vosync', protocol: 'tcp', port: '3500', description: 'tcp:3500', flow_type: 'control' },
+      { from_service: 'aut_edge', to_service: 'vosync', protocol: 'tcp', port: '3500', description: 'tcp:3500', flow_type: 'control' },
+      { from_service: 'udp_edge', to_service: 'local_ap', protocol: 'tcp', port: '8101', description: 'tcp:8101', flow_type: 'control' },
+      { from_service: 'aut_edge', to_service: 'local_ap', protocol: 'tcp', port: '8101', description: 'tcp:8101', flow_type: 'control' },
+      { from_service: 'udp_edge', to_service: 'cap_sync', protocol: 'tcp', port: '3501', description: 'tcp:3501', flow_type: 'control' },
+      { from_service: 'aut_edge', to_service: 'cap_sync', protocol: 'tcp', port: '3501', description: 'tcp:3501', flow_type: 'control' },
+      { from_service: 'udp_edge', to_service: 'arb', protocol: 'tcp', port: '2700', description: 'tcp:2700', flow_type: 'control' },
+      { from_service: 'aut_edge', to_service: 'arb', protocol: 'tcp', port: '2700', description: 'tcp:2700', flow_type: 'control' },
+      { from_service: 'udp_edge', to_service: 'arb', protocol: 'tcp', port: '9900', description: 'tcp:9900', flow_type: 'control' },
+      { from_service: 'aut_edge', to_service: 'arb', protocol: 'tcp', port: '9900', description: 'tcp:9900', flow_type: 'control' },
+      { from_service: 'udp_edge', to_service: 'event_collector', protocol: 'tcp', port: '4301', description: 'tcp:4301', flow_type: 'mgmt' },
+      { from_service: 'aut_edge', to_service: 'event_collector', protocol: 'tcp', port: '4301', description: 'tcp:4301', flow_type: 'mgmt' },
+
+      { from_service: 'udp_edge', to_service: 'web_edge', protocol: 'udp', port: '4601', description: 'udp:4601', flow_type: 'media' },
+      { from_service: 'aut_edge', to_service: 'web_edge', protocol: 'udp', port: '4101', description: 'udp:4101', flow_type: 'media' }
+    ];
+  }
+
+  // 防火墙规则默认结构（若缺失则自动补齐）
+  if (forceRebuild || !Array.isArray(arch.firewall_rules) || arch.firewall_rules.length === 0) {
+    const rules = [
+      { source: 'Native SDK', destination: 'Local AP', protocol: 'TCP', port: '8003', direction: 'inbound', purpose: 'SDK接入分配' },
+      { source: 'Web SDK', destination: 'Local AP', protocol: 'TCP', port: '443', direction: 'inbound', purpose: 'Web SDK接入' },
+      { source: 'Native SDK', destination: 'AUT Edge', protocol: 'UDP', port: '4700-4714', direction: 'inbound', purpose: '媒体传输' },
+      { source: 'Web SDK', destination: 'Web Edge', protocol: 'TCP/UDP', port: '4500-4514', direction: 'inbound', purpose: 'WebRTC传输' },
+      { source: 'SDK', destination: 'Event Collector', protocol: 'TCP/UDP', port: '6443/4301', direction: 'inbound', purpose: '事件收集' }
+    ];
+    if (project?.deployment_type === 'hybrid') {
+      rules.push({ source: 'Edge', destination: 'Proxy VOS', protocol: 'TCP/UDP', port: '5201/5001', direction: 'outbound', purpose: '混合云通信' });
+    }
+    arch.firewall_rules = rules;
+  }
+
+  // mgmt.sh 节点变量（若缺失则自动补齐）
+  const coreNode = normalizedNodes.find((n) => n.services.includes('local_ap') || n.role.includes('core')) || normalizedNodes[0];
+  const datahubNode = normalizedNodes.find((n) => n.services.includes('datahub')) || normalizedNodes[0];
+  if (forceRebuild || !Array.isArray(arch.mgmt_configs) || arch.mgmt_configs.length === 0) {
+    arch.mgmt_configs = normalizedNodes.map((n) => ({
+      node_id: n.node_id,
+      hostname: n.hostname,
+      variables: {
+        local_ip: n.ip_address || '',
+        ap: coreNode?.ip_address || '',
+        balancer: coreNode?.ip_address || '',
+        sync: coreNode?.ip_address || '',
+        event_collector: coreNode?.ip_address || '',
+        datahub_ip: datahubNode?.ip_address || '',
+        udp_edge_cnt: Number(n.instance_counts?.udp_edge_cnt || 0),
+        aut_edge_cnt: Number(n.instance_counts?.aut_edge_cnt || 0),
+        web_edge_cnt: Number(n.instance_counts?.web_edge_cnt || 0),
+        ...(project?.deployment_type === 'hybrid' ? { vos_ip: '120.92.138.184,120.92.117.169' } : {})
+      }
+    }));
+  }
+
+  return arch;
+}
+
+function buildTopologyRedrawRequirements(project) {
+  let networkSecurity = null;
+  try {
+    if (project?.network_security) networkSecurity = JSON.parse(project.network_security);
+  } catch (_) {
+    networkSecurity = null;
+  }
+  return {
+    customerName: project?.customer_name || '',
+    deploymentType: project?.deployment_type || 'pure',
+    networkType: project?.network_type || 'intranet',
+    networkSecurity
+  };
+}
+
+function normalizeVisualLayout(architecture) {
+  const arch = architecture && typeof architecture === 'object' ? architecture : {};
+  const topoNodes = Array.isArray(arch.topology?.nodes) ? arch.topology.nodes : [];
+  const nodes = Array.isArray(arch.nodes) ? arch.nodes : [];
+  const comps = Array.isArray(arch.network_components) ? arch.network_components : [];
+  if (!arch.layout || typeof arch.layout !== 'object') arch.layout = {};
+  if (!arch.layout.node_positions) arch.layout.node_positions = {};
+  if (!arch.layout.client_positions) arch.layout.client_positions = {};
+  if (!arch.layout.component_positions) arch.layout.component_positions = {};
+
+  const nodeW = 190;
+  const nodeH = 120;
+  const nodeGapX = 30;
+  const nodeGapY = 30;
+  const baseX = 90;
+  const baseY = 130;
+  const allNodes = topoNodes.length
+    ? topoNodes.map((n) => nodes.find((x) => x.node_id === n.node_id) || n).filter(Boolean)
+    : nodes;
+  const cols = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(allNodes.length || 1))));
+  allNodes.forEach((n, idx) => {
+    if (!n?.node_id) return;
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    arch.layout.node_positions[n.node_id] = {
+      x: baseX + col * (nodeW + nodeGapX),
+      y: baseY + row * (nodeH + nodeGapY)
+    };
+  });
+
+  comps.forEach((c, i) => {
+    const compCol = i % 3;
+    const compRow = Math.floor(i / 3);
+    const cx = baseX + cols * (nodeW + nodeGapX) + 40 + compCol * 110;
+    const cy = baseY + compRow * 46;
+    arch.layout.component_positions[c.id] = { x: cx, y: cy };
+  });
+
+  const spanX = baseX + cols * (nodeW + nodeGapX);
+  arch.layout.client_positions.native_sdk = arch.layout.client_positions.native_sdk || { x: spanX + 80, y: 40 };
+  arch.layout.client_positions.web_sdk = arch.layout.client_positions.web_sdk || { x: spanX + 80, y: 96 };
+  return arch;
+}
+
 function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requireAuth) {
   const resourceCalc = new RTCResourceCalculator();
   const aiClient = new QwenAIClient();
@@ -80,7 +250,12 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
           deployment_type,
           network_type,
           sla_requirement,
-          special_requirements
+          special_requirements,
+          network_security,
+          appid,
+          app_id,
+          appCert,
+          app_cert
         } = req.body;
 
         if (!project_name || !customer_name || !concurrent_users || !channels || !channel_model || !deployment_type) {
@@ -92,11 +267,15 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
           `INSERT INTO rtc_deployment_projects 
            (project_name, customer_name, concurrent_users, channels, channel_model,
             has_video, video_resolution, fps, deployment_type, network_type,
-            sla_requirement, special_requirements, status, created_by, sa_email, sa_name, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            sla_requirement, special_requirements, network_security, appid, app_cert,
+            status, created_by, sa_email, sa_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           project_name, customer_name, concurrent_users, channels, channel_model,
           has_video ? 1 : 0, video_resolution, fps, deployment_type, network_type,
-          sla_requirement, special_requirements, 'draft', req.session.user.id,
+          sla_requirement, special_requirements, network_security || null,
+          appid || app_id || null,
+          app_cert || appCert || null,
+          'draft', req.session.user.id,
           req.session.user.email, req.session.user.name, now
         );
 
@@ -296,6 +475,11 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
         }
 
         // 构建需求对象
+        let networkSecurity = null;
+        try {
+          if (project.network_security) networkSecurity = JSON.parse(project.network_security);
+        } catch (_) { /* ignore parse error */ }
+
         const requirements = {
           customerName: project.customer_name,
           concurrentUsers: project.concurrent_users,
@@ -305,7 +489,9 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
           videoResolution: project.video_resolution,
           deploymentType: project.deployment_type,
           networkType: project.network_type,
-          sla: project.sla_requirement
+          sla: project.sla_requirement,
+          specialRequirements: project.special_requirements,
+          networkSecurity
         };
 
         const resourceEstimateObj = {
@@ -328,13 +514,14 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
 
         if (!aiResponse.success) {
           return res.status(500).json({ 
-            error: 'AI generation failed',
+            error: aiResponse.error || 'AI generation failed',
             details: aiResponse.error,
             rawContent: aiResponse.rawContent
           });
         }
 
-        const architecture = aiResponse.architecture;
+        let architecture = rebuildArchitectureDerivedFields(aiResponse.architecture, project);
+        architecture = normalizeVisualLayout(architecture);
 
         // 保存到数据库
         const now = new Date().toISOString();
@@ -349,10 +536,11 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
           `INSERT INTO rtc_ai_architectures 
            (project_id, ai_model, ai_prompt, ai_response_raw, architecture_name,
             architecture_json, reasoning, risks_json, recommendations_json,
+            source_type, parent_architecture_id, layout_json,
             is_current, generated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           project.id,
-          'qwen-plus',
+          aiClient.model || 'qwen-max',
           'Architecture Generation',  // 简化，实际prompt很长
           aiResponse.rawContent,
           architecture.architecture_name || '默认方案',
@@ -360,6 +548,9 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
           architecture.reasoning || '',
           JSON.stringify(architecture.risks || []),
           JSON.stringify(architecture.recommendations || []),
+          'ai_generated',
+          null,
+          JSON.stringify(architecture.layout || null),
           1,
           now
         );
@@ -378,7 +569,14 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
         });
       } catch (err) {
         console.error('[RTC] Failed to generate architecture:', err);
-        return res.status(500).json({ 
+        const causeCode = err?.cause?.code;
+        if (causeCode === 'ENOTFOUND') {
+          return res.status(503).json({
+            error: 'AI服务不可达，请检查DNS/网络/代理配置',
+            details: `Host resolve failed: ${err.cause.hostname}`
+          });
+        }
+        return res.status(500).json({
           error: 'Failed to generate architecture',
           details: err.message
         });
@@ -423,6 +621,181 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
       } catch (err) {
         console.error('[RTC] Failed to review architecture:', err);
         return res.status(500).json({ error: 'Failed to review architecture' });
+      }
+    }
+  );
+
+  // ============================================
+  // 手工微调（节点规划）
+  // ============================================
+
+  /**
+   * 手工微调节点规划并生成新版本（仅展示最新版本）
+   */
+  app.post('/api/rtc-deployment/projects/:id/tune-nodes',
+    requirePermission('rtc:project:update'),
+    async (req, res) => {
+      const { nodes, layout_json = null, redraw_topology = true } = req.body || {};
+      if (!Array.isArray(nodes) || nodes.length === 0) {
+        return res.status(400).json({ error: 'nodes is required' });
+      }
+
+      try {
+        const project = await db.get('SELECT * FROM rtc_deployment_projects WHERE id = ?', req.params.id);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const currentArch = await db.get(
+          'SELECT * FROM rtc_ai_architectures WHERE project_id = ? AND is_current = 1 LIMIT 1',
+          project.id
+        );
+        if (!currentArch) {
+          return res.status(400).json({ error: 'No current architecture found. Please generate AI architecture first.' });
+        }
+
+        let baseArch;
+        try {
+          baseArch = JSON.parse(currentArch.architecture_json);
+        } catch (err) {
+          return res.status(500).json({ error: 'Current architecture data is invalid' });
+        }
+
+        const tuned = { ...baseArch, nodes };
+        if (layout_json) tuned.layout = layout_json;
+        let nextArch = rebuildArchitectureDerivedFields(tuned, project, true);
+
+        // 节点微调后，提交给AI进行拓扑重绘（可关闭）
+        let topologyRedrawInfo = null;
+        if (redraw_topology !== false && aiClient.isAvailable()) {
+          try {
+            const redrawReq = buildTopologyRedrawRequirements(project);
+            const redrawResp = await aiClient.redrawTopology(redrawReq, nextArch);
+            if (redrawResp?.success && redrawResp.topology) {
+              nextArch.topology = redrawResp.topology;
+              if (redrawResp.layout) nextArch.layout = redrawResp.layout;
+              nextArch = rebuildArchitectureDerivedFields(nextArch, project, false);
+              nextArch = normalizeVisualLayout(nextArch);
+              topologyRedrawInfo = { ok: true };
+            } else {
+              topologyRedrawInfo = { ok: false, error: redrawResp?.error || 'topology redraw failed' };
+            }
+          } catch (redrawErr) {
+            topologyRedrawInfo = { ok: false, error: redrawErr.message };
+          }
+        }
+
+        const now = new Date().toISOString();
+        await db.run('BEGIN');
+        try {
+          await db.run(
+            'UPDATE rtc_ai_architectures SET is_current = 0 WHERE project_id = ?',
+            project.id
+          );
+
+          const ins = await db.run(
+            `INSERT INTO rtc_ai_architectures
+             (project_id, ai_model, ai_prompt, ai_response_raw, architecture_name,
+              architecture_json, reasoning, risks_json, recommendations_json,
+              source_type, parent_architecture_id, layout_json,
+              is_current, generated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            project.id,
+            currentArch.ai_model || 'manual',
+            'Manual Node Tuning',
+            currentArch.ai_response_raw || '',
+            nextArch.architecture_name || '手工微调方案',
+            JSON.stringify(nextArch),
+            nextArch.reasoning || '',
+            JSON.stringify(nextArch.risks || []),
+            JSON.stringify(nextArch.recommendations || []),
+            'manual_tuned',
+            currentArch.id,
+            JSON.stringify(nextArch.layout || layout_json || null),
+            1,
+            now
+          );
+
+          await db.run(
+            'UPDATE rtc_deployment_projects SET updated_at = ? WHERE id = ?',
+            now, project.id
+          );
+
+          await db.run('COMMIT');
+          return res.json({
+            architecture_id: ins.lastID,
+            architecture: nextArch,
+            topology_redraw: topologyRedrawInfo,
+            message: 'Nodes tuned and new version created'
+          });
+        } catch (txErr) {
+          await db.run('ROLLBACK');
+          throw txErr;
+        }
+      } catch (err) {
+        console.error('[RTC] Failed to tune nodes:', err);
+        return res.status(500).json({ error: 'Failed to tune nodes', details: err.message });
+      }
+    }
+  );
+
+  /**
+   * 拖拽拓扑布局自动保存（不创建新版本）
+   */
+  app.post('/api/rtc-deployment/projects/:id/layout-autosave',
+    requirePermission('rtc:project:update'),
+    async (req, res) => {
+      const { layout_json = null, architecture_patch = null } = req.body || {};
+      if (!layout_json || typeof layout_json !== 'object') {
+        return res.status(400).json({ error: 'layout_json is required' });
+      }
+
+      try {
+        const project = await db.get('SELECT * FROM rtc_deployment_projects WHERE id = ?', req.params.id);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const currentArch = await db.get(
+          'SELECT * FROM rtc_ai_architectures WHERE project_id = ? AND is_current = 1 LIMIT 1',
+          project.id
+        );
+        if (!currentArch) {
+          return res.status(400).json({ error: 'No current architecture found' });
+        }
+
+        let arch;
+        try {
+          arch = JSON.parse(currentArch.architecture_json);
+        } catch (_) {
+          return res.status(500).json({ error: 'Current architecture data is invalid' });
+        }
+        arch.layout = layout_json;
+        if (architecture_patch && typeof architecture_patch === 'object') {
+          if (Array.isArray(architecture_patch.network_components)) {
+            arch.network_components = architecture_patch.network_components;
+          }
+          if (architecture_patch.topology && typeof architecture_patch.topology === 'object') {
+            arch.topology = architecture_patch.topology;
+          }
+        }
+        const now = new Date().toISOString();
+
+        await db.run(
+          `UPDATE rtc_ai_architectures
+           SET architecture_json = ?, layout_json = ?, generated_at = ?
+           WHERE id = ?`,
+          JSON.stringify(arch),
+          JSON.stringify(layout_json),
+          now,
+          currentArch.id
+        );
+        await db.run(
+          'UPDATE rtc_deployment_projects SET updated_at = ? WHERE id = ?',
+          now,
+          project.id
+        );
+
+        return res.json({ ok: true, architecture_id: currentArch.id, saved_at: now });
+      } catch (err) {
+        console.error('[RTC] Failed to autosave layout:', err);
+        return res.status(500).json({ error: 'Failed to autosave layout', details: err.message });
       }
     }
   );
@@ -590,6 +963,38 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
     }
   );
 
+  /**
+   * 一键导出完整 mgmt.sh（基于当前版本方案）
+   */
+  app.get('/api/rtc-deployment/projects/:id/export-mgmt-sh',
+    requirePermission('rtc:config:download'),
+    async (req, res) => {
+      try {
+        const project = await db.get('SELECT * FROM rtc_deployment_projects WHERE id = ?', req.params.id);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const archRow = await db.get(
+          'SELECT * FROM rtc_ai_architectures WHERE project_id = ? AND is_current = 1 LIMIT 1',
+          project.id
+        );
+        if (!archRow) {
+          return res.status(400).json({ error: 'No current architecture found' });
+        }
+
+        let architecture = JSON.parse(archRow.architecture_json);
+        architecture = rebuildArchitectureDerivedFields(architecture, project);
+        const mgmt = configGen.generateMgmtSh(architecture, project);
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=\"mgmt.sh\"`);
+        return res.send(mgmt);
+      } catch (err) {
+        console.error('[RTC] Failed to export mgmt.sh:', err);
+        return res.status(500).json({ error: 'Failed to export mgmt.sh', details: err.message });
+      }
+    }
+  );
+
   // ============================================
   // AI配置验证
   // ============================================
@@ -630,7 +1035,7 @@ function createRTCDeploymentRoutes(app, db, rbacManager, requirePermission, requ
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           req.params.id,
           config_type,
-          'qwen-plus',
+          aiClient.model || 'qwen-max',
           validation.validation.validation_result,
           validation.validation.score || 0,
           JSON.stringify(validation.validation.errors || []),

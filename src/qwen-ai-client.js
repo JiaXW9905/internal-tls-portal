@@ -1,14 +1,19 @@
 /**
  * 千问AI客户端（通义千问）
  * 用于RTC私有化部署的AI辅助决策
+ * 支持通过环境变量 HTTPS_PROXY / HTTP_PROXY 走代理（内网环境）
  */
 
 const fs = require('fs');
 const path = require('path');
+const { fetch: undiciFetch, EnvHttpProxyAgent } = require('undici');
+const JSON5 = require('json5');
+const { jsonrepair } = require('jsonrepair');
 
 class QwenAIClient {
-  constructor(apiKey = null, model = 'qwen-plus') {
+  constructor(apiKey = null, model = 'qwen-max') {
     // 如果没有传入apiKey，尝试从配置文件读取
+    this.proxy = null;
     if (!apiKey) {
       try {
         const configPath = path.join(__dirname, '..', '.ai_config.json');
@@ -16,6 +21,7 @@ class QwenAIClient {
         this.apiKey = config.qwen.api_key;
         this.endpoint = config.qwen.endpoint;
         this.model = config.qwen.model || model;
+        if (config.qwen.proxy) this.proxy = config.qwen.proxy;
       } catch (err) {
         console.warn('[QwenAI] No API config found, AI features will be disabled');
         this.apiKey = null;
@@ -56,8 +62,11 @@ class QwenAIClient {
       content: prompt
     });
 
+    const proxyOpts = this.proxy ? { httpsProxy: this.proxy } : {};
+    const proxyAgent = new EnvHttpProxyAgent(proxyOpts);
     try {
-      const response = await fetch(this.endpoint, {
+      const response = await undiciFetch(this.endpoint, {
+        dispatcher: proxyAgent,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -80,13 +89,18 @@ class QwenAIClient {
       }
 
       const result = await response.json();
-      
+
       if (result.code) {
         throw new Error(`Qwen API error code: ${result.code}, message: ${result.message}`);
       }
 
+      const content = result.output?.choices?.[0]?.message?.content;
+      if (content == null || typeof content !== 'string') {
+        throw new Error(result.message || 'AI返回内容为空或格式异常');
+      }
+
       return {
-        content: result.output.choices[0].message.content,
+        content,
         usage: result.usage,
         requestId: result.request_id
       };
@@ -105,11 +119,24 @@ class QwenAIClient {
     const prompt = this.buildArchitecturePrompt(requirements, resourceEstimate, similarCases);
 
     const response = await this.callQwen(prompt, systemPrompt, {
-      temperature: 0.7,
-      max_tokens: 3000
+      temperature: 0.6,
+      max_tokens: 4500
     });
 
     return this.parseArchitectureResponse(response.content);
+  }
+
+  /**
+   * 基于当前节点规划重绘拓扑布局（用于节点微调后联动优化）
+   */
+  async redrawTopology(requirements, architecture) {
+    const systemPrompt = '你是一位RTC私有化部署可视化架构专家，擅长生成清晰、可读、精确的网络拓扑结构。';
+    const prompt = this.buildTopologyRedrawPrompt(requirements, architecture);
+    const response = await this.callQwen(prompt, systemPrompt, {
+      temperature: 0.3,
+      max_tokens: 2600
+    });
+    return this.parseTopologyRedrawResponse(response.content);
   }
 
   /**
@@ -125,7 +152,9 @@ class QwenAIClient {
       videoResolution,
       deploymentType,
       networkType,
-      sla
+      sla,
+      specialRequirements,
+      networkSecurity
     } = requirements;
 
     const similarCasesText = similarCases.length > 0
@@ -133,6 +162,24 @@ class QwenAIClient {
           `案例${i+1}: ${c.summary}\n- 规模: ${c.users}用户, ${c.channels}频道\n- 方案: ${c.architecture_summary}`
         ).join('\n\n')}`
       : '';
+
+    // 构建网络安全要求描述
+    let networkSecurityText = '';
+    if (networkSecurity) {
+      const parts = [];
+      if (networkSecurity.has_air_gap) {
+        parts.push(`- 网闸隔离: 是${networkSecurity.air_gap_description ? '（' + networkSecurity.air_gap_description + '）' : ''}`);
+      }
+      if (networkSecurity.has_proxy) {
+        parts.push(`- 代理: 是${networkSecurity.proxy_address ? '（地址: ' + networkSecurity.proxy_address + '）' : ''}`);
+      }
+      if (networkSecurity.has_firewall) {
+        parts.push(`- 防火墙: 是${networkSecurity.firewall_description ? '（' + networkSecurity.firewall_description + '）' : ''}`);
+      }
+      if (parts.length > 0) {
+        networkSecurityText = `\n\n【网络安全要求】\n${parts.join('\n')}`;
+      }
+    }
 
     return `
 请为以下RTC私有化部署需求设计详细的架构方案：
@@ -146,6 +193,8 @@ class QwenAIClient {
 - 部署类型: ${deploymentType === 'pure' ? '纯私有部署' : '混合云部署'}
 - 网络环境: ${networkType}
 - SLA要求: ${sla || '99%可用性'}
+${specialRequirements ? `- 特殊需求: ${specialRequirements}` : ''}
+${networkSecurityText}
 
 【资源评估结果】
 - 需要媒体服务器: ${resourceEstimate.servers.mediaServers}台
@@ -187,6 +236,12 @@ ${similarCasesText}
 5. 数据平台独立1台服务器（需要500GB存储）
 6. 混合云部署需配置vos_ip连接公网SD-RTN
 7. IP地址分配建议使用192.168.x.x网段，避免与客户现有网络冲突
+${networkSecurity?.has_air_gap ? '8. 网闸隔离场景：内外网分区部署，核心服务在内网，通过网闸与外网SDK交互' : ''}
+${networkSecurity?.has_proxy ? '9. 代理场景：混合云通信需经代理转发，mgmt.sh中需配置代理变量' : ''}
+${networkSecurity?.has_firewall ? '10. 防火墙场景：所有跨区访问端口需明确列出，方便客户申请放通' : ''}
+11. 可视化布局约束：节点/网络组件不得重叠，连线尽量美观且不遮挡节点标题和服务文本
+12. 连线表达约束：媒体流量、业务控制流量、运维管理流量需使用不同 style/color 语义（例如 media/control/mgmt）
+13. 空间利用约束：优先采用横向或网格化布局，避免所有区域单列堆叠导致画布过高
 
 【请设计并以JSON格式输出】
 
@@ -194,24 +249,28 @@ ${similarCasesText}
 
 1. **节点规划**: 每台服务器的角色、IP、部署的服务组件
 2. **实例配置**: 每个edge服务的实例数量（udp/aut/web_edge_cnt）
-3. **网络方案**: IP分配、防火墙端口、服务间连接关系
-4. **高可用**: 关键服务的主备配置
-5. **部署顺序**: 推荐的部署步骤
-6. **风险评估**: 潜在瓶颈和缓解措施
+3. **网络拓扑**: 扁平节点拓扑（不使用区域层级），包含节点与连接关系
+4. **防火墙规则**: 所有需要放通的端口规则（源/目标/协议/端口/方向/用途）
+5. **mgmt.sh配置**: 每个节点的mgmt.sh关键变量值
+6. **高可用**: 关键服务的主备配置
+7. **部署顺序**: 推荐的部署步骤
+8. **风险评估**: 潜在瓶颈和缓解措施
 
 **严格要求**：
 - 必须返回合法的JSON格式
 - 节点IP不能冲突
 - 必须包含所有必需的核心服务
 - edge实例总数不能超过服务器承载能力
+- topology 与 layout 需要满足不重叠、不越界、连线尽量规避文本遮挡
+- topology.connections 可附带 from_service/to_service/protocol/port/flow_type 字段，用于精细渲染服务级链路
 
 **JSON结构示例**：
 
 \`\`\`json
 {
-  "architecture_name": "方案名称（简短）",
-  "summary": "方案摘要（1-2句话）",
-  "reasoning": "设计理由（为什么这样设计，考虑了哪些因素）",
+  "architecture_name": "方案名称",
+  "summary": "方案摘要",
+  "reasoning": "设计理由",
   "nodes": [
     {
       "node_id": "node-1",
@@ -220,55 +279,50 @@ ${similarCasesText}
       "role": "core-services",
       "role_description": "核心管理服务",
       "services": ["local_ap", "local_balancer", "vosync", "cap_sync", "event_collector"],
-      "instance_counts": {
+      "instance_counts": { "udp_edge_cnt": 0, "aut_edge_cnt": 0, "web_edge_cnt": 0 },
+      "resources": { "cpu": 16, "memory": 32, "storage": 240, "bandwidth": 1000 }
+    }
+  ],
+  "topology": {
+    "nodes": [
+      { "node_id": "node-1", "hostname": "rtc-core-01", "services": ["local_ap", "local_balancer"] },
+      { "node_id": "node-2", "hostname": "rtc-media-01", "services": ["udp_edge", "aut_edge", "web_edge"] }
+    ],
+    "connections": [
+      { "from_service": "web_edge", "to_service": "local_balancer", "protocol": "tcp", "port": "2700", "description": "tcp:2700", "flow_type": "control" }
+    ]
+  },
+  "firewall_rules": [
+    { "source": "SDK客户端", "destination": "Local AP", "protocol": "TCP", "port": "8003", "direction": "inbound", "purpose": "SDK接入分配" },
+    { "source": "SDK客户端", "destination": "Local AP", "protocol": "TCP", "port": "443", "direction": "inbound", "purpose": "Web SDK接入" },
+    { "source": "SDK客户端", "destination": "AUT Edge", "protocol": "UDP", "port": "4700-4714", "direction": "inbound", "purpose": "AUT媒体传输" },
+    { "source": "SDK客户端", "destination": "Web Edge", "protocol": "TCP/UDP", "port": "4500-4514", "direction": "inbound", "purpose": "WebRTC传输" }
+  ],
+  "mgmt_configs": [
+    {
+      "node_id": "node-1",
+      "hostname": "rtc-core-01",
+      "variables": {
+        "local_ip": "192.168.1.10",
+        "ap": "192.168.1.10",
+        "balancer": "192.168.1.10",
+        "sync": "192.168.1.10",
+        "event_collector": "192.168.1.10",
+        "datahub_ip": "192.168.4.10",
         "udp_edge_cnt": 0,
         "aut_edge_cnt": 0,
         "web_edge_cnt": 0
-      },
-      "resources": {
-        "cpu": 16,
-        "memory": 32,
-        "storage": 240,
-        "bandwidth": 1000
       }
     }
   ],
   "network": {
-    "ip_allocations": {
-      "core_services": "192.168.1.0/24",
-      "media_services": "192.168.2.0/23",
-      "datahub": "192.168.4.0/24"
-    },
-    "mgmt_variables": {
-      "ap": "192.168.1.10",
-      "balancer": "192.168.1.10",
-      "sync": "192.168.1.10",
-      "event_collector": "192.168.1.10",
-      "datahub_ip": "192.168.4.10"
-    }
+    "ip_allocations": { "core_services": "192.168.1.0/24", "media_services": "192.168.2.0/23" },
+    "mgmt_variables": { "ap": "192.168.1.10", "balancer": "192.168.1.10", "sync": "192.168.1.10", "datahub_ip": "192.168.4.10" }
   },
-  "ha_config": {
-    "enabled": true,
-    "critical_services": ["local_ap", "local_balancer"],
-    "backup_node": "node-2"
-  },
-  "deployment_order": [
-    "1. 核心服务节点",
-    "2. 媒体服务节点",
-    "3. 数据平台",
-    "4. 监控服务"
-  ],
-  "risks": [
-    {
-      "risk": "风险描述",
-      "severity": "high/medium/low",
-      "mitigation": "缓解措施"
-    }
-  ],
-  "recommendations": [
-    "优化建议1",
-    "优化建议2"
-  ]
+  "ha_config": { "enabled": true, "critical_services": ["local_ap", "local_balancer"], "backup_node": "node-2" },
+  "deployment_order": ["1. 核心服务节点", "2. 媒体服务节点", "3. 数据平台", "4. 监控服务"],
+  "risks": [{ "risk": "风险描述", "severity": "high", "mitigation": "缓解措施" }],
+  "recommendations": ["优化建议1"]
 }
 \`\`\`
 
@@ -277,27 +331,188 @@ ${similarCasesText}
   }
 
   /**
+   * 构建“拓扑重绘”Prompt（基于已确定的节点方案）
+   */
+  buildTopologyRedrawPrompt(requirements, architecture) {
+    const projectInfo = {
+      customerName: requirements.customerName,
+      deploymentType: requirements.deploymentType,
+      networkType: requirements.networkType,
+      networkSecurity: requirements.networkSecurity || null
+    };
+    return `
+请根据以下“已确定的节点规划”重新设计拓扑图布局，目标是：
+1) 精确反映扁平节点关系（不使用区域层级）
+2) 字体大小适宜、布局清晰、可读性高
+3) 尽量减少连线交叉
+4) 输出可供前端Canvas渲染的数据
+
+【项目信息】
+${JSON.stringify(projectInfo, null, 2)}
+
+【当前方案（仅供重绘参考，节点数据必须保留）】
+${JSON.stringify(architecture, null, 2)}
+
+【硬性要求】
+- 不允许删除或改名 nodes 中已有节点
+- 不允许更改节点IP和服务清单
+- 可以优化 topology.nodes / topology.connections / layout
+- 如果存在网闸/防火墙/代理，需通过 network_components 或 connections 描述
+- 必须返回合法JSON
+- 节点、网络组件之间不得发生重叠
+- 连线尽量规避节点标题和服务文字，避免遮挡
+- media/control/mgmt 流量要有不同的样式语义（可通过 flow_type 字段表达）
+- 优先横向或网格化分布区域，避免单列纵向挤压
+
+【输出JSON格式】
+\`\`\`json
+{
+  "topology": {
+    "nodes": [
+      { "node_id": "node-1", "hostname": "rtc-core-01", "services": ["local_ap", "local_balancer"] },
+      { "node_id": "node-2", "hostname": "rtc-media-01", "services": ["udp_edge", "aut_edge", "web_edge"] }
+    ],
+    "connections": [
+      { "from_service": "web_edge", "to_service": "local_balancer", "protocol": "tcp", "port": "2700", "description": "tcp:2700", "flow_type": "control" }
+    ]
+  },
+  "layout": {
+    "node_positions": { "node-1": { "x": 120, "y": 180 } },
+    "component_positions": { "comp-firewall-1": { "x": 420, "y": 140 } },
+    "client_positions": {
+      "native_sdk": { "x": 760, "y": 40 },
+      "web_sdk": { "x": 760, "y": 96 }
+    }
+  }
+}
+\`\`\`
+
+只返回JSON，不要其他文字。
+`;
+  }
+
+  /**
+   * 在未进入字符串的前提下，从 start 起找匹配的闭合括号下标
+   */
+  _findMatchingCloseBracket(str, start, openChar, closeChar) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < str.length; i++) {
+      const c = str[i];
+      if (escape) { escape = false; continue; }
+      if (inString) {
+        if (c === '\\') escape = true;
+        else if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') { inString = true; continue; }
+      if (c === openChar) depth++;
+      else if (c === closeChar) {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * 仅移除“不在字符串内”的尾逗号（, 后紧跟空白和 ] 或 }），避免误伤字符串内容
+   */
+  _removeTrailingCommasOutsideStrings(jsonStr) {
+    let out = '';
+    let i = 0;
+    while (i < jsonStr.length) {
+      const c = jsonStr[i];
+      if (c === '"') {
+        out += c;
+        i++;
+        while (i < jsonStr.length) {
+          const s = jsonStr[i];
+          if (s === '\\') { out += s; if (i + 1 < jsonStr.length) out += jsonStr[i + 1]; i += 2; continue; }
+          if (s === '"') { out += s; i++; break; }
+          out += s;
+          i++;
+        }
+        continue;
+      }
+      if (c === ',') {
+        const rest = jsonStr.slice(i + 1);
+        const match = rest.match(/^\s*(\]|\})/);
+        if (match) {
+          out += match[1];
+          i += 1 + match[0].length;
+          continue;
+        }
+      }
+      out += c;
+      i++;
+    }
+    return out;
+  }
+
+  /**
+   * 从文本中提取第一个完整 JSON 对象或数组（字符串感知）
+   */
+  _extractJsonPayload(text) {
+    const firstObject = text.indexOf('{');
+    const firstArray = text.indexOf('[');
+    if (firstObject === -1 && firstArray === -1) return text;
+    const start = (firstArray !== -1 && (firstArray < firstObject || firstObject === -1)) ? firstArray : firstObject;
+    const openChar = text[start];
+    const closeChar = openChar === '{' ? '}' : ']';
+    const end = this._findMatchingCloseBracket(text, start, openChar, closeChar);
+    if (end === -1) return text.slice(start);
+    return text.slice(start, end + 1);
+  }
+
+  /**
    * 解析AI架构响应
    */
   parseArchitectureResponse(content) {
     try {
-      // 尝试提取JSON内容
-      let jsonStr = content.trim();
-      
-      // 如果被包裹在```json```中，提取出来
+      let jsonStr = (content && typeof content === 'string' ? content : String(content)).trim();
+      if (!jsonStr) throw new Error('AI返回内容为空');
+
+      // 若被 ```json``` 或 ``` 包裹，先提取
       const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
         jsonStr = jsonMatch[1].trim();
       }
-      
-      // 解析JSON
-      const architecture = JSON.parse(jsonStr);
-      
-      // 验证必需字段
-      if (!architecture.nodes || !Array.isArray(architecture.nodes)) {
-        throw new Error('Invalid architecture: missing nodes array');
+
+      // 字符串感知：提取第一个完整 JSON 对象或数组
+      jsonStr = this._extractJsonPayload(jsonStr);
+
+      // 先尝试直接解析
+      let architecture;
+      const fixed = this._removeTrailingCommasOutsideStrings(jsonStr);
+      try {
+        architecture = JSON.parse(jsonStr);
+      } catch (parseErr) {
+        try {
+          architecture = JSON.parse(fixed);
+        } catch (parseErr2) {
+          try {
+            // JSON5容忍单引号、尾逗号、未加引号的key等
+            architecture = JSON5.parse(fixed);
+          } catch (_) {
+            try {
+              // jsonrepair 尝试修复常见结构性错误
+              const repaired = jsonrepair(fixed);
+              architecture = JSON.parse(repaired);
+            } catch (repairErr) {
+              throw parseErr;
+            }
+          }
+        }
       }
-      
+      if (!architecture || typeof architecture !== 'object') {
+        throw new Error('AI返回的不是有效JSON对象');
+      }
+      if (!Array.isArray(architecture.nodes)) {
+        architecture.nodes = [];
+      }
+
       return {
         success: true,
         architecture: architecture,
@@ -305,7 +520,57 @@ ${similarCasesText}
       };
     } catch (err) {
       console.error('[QwenAI] Failed to parse architecture:', err);
-      
+
+      return {
+        success: false,
+        error: err.message,
+        rawContent: content
+      };
+    }
+  }
+
+  /**
+   * 解析拓扑重绘响应
+   */
+  parseTopologyRedrawResponse(content) {
+    try {
+      let jsonStr = (content && typeof content === 'string' ? content : String(content)).trim();
+      if (!jsonStr) throw new Error('AI返回内容为空');
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) jsonStr = jsonMatch[1].trim();
+      jsonStr = this._extractJsonPayload(jsonStr);
+
+      const fixed = this._removeTrailingCommasOutsideStrings(jsonStr);
+      let payload = null;
+      try {
+        payload = JSON.parse(jsonStr);
+      } catch (_) {
+        try {
+          payload = JSON.parse(fixed);
+        } catch (_) {
+          try {
+            payload = JSON5.parse(fixed);
+          } catch (_) {
+            const repaired = jsonrepair(fixed);
+            payload = JSON.parse(repaired);
+          }
+        }
+      }
+
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('拓扑重绘返回内容不是JSON对象');
+      }
+      if (!payload.topology || (!Array.isArray(payload.topology.nodes) && !Array.isArray(payload.topology.connections))) {
+        throw new Error('拓扑重绘返回缺少 topology.nodes/connections');
+      }
+
+      return {
+        success: true,
+        topology: payload.topology,
+        layout: payload.layout || null,
+        rawContent: content
+      };
+    } catch (err) {
       return {
         success: false,
         error: err.message,

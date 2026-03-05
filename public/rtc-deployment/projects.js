@@ -68,7 +68,7 @@ async function loadProjects() {
 
     tbody.innerHTML = projects.map(p => `
       <tr>
-        <td>${p.project_name}</td>
+        <td><a href="/rtc-deployment/detail?project_id=${p.id}" style="color:#3b82f6;text-decoration:none;font-weight:500;">${p.project_name}</a></td>
         <td>${p.customer_name}</td>
         <td>${DEPLOYMENT_LABELS[p.deployment_type] || p.deployment_type}</td>
         <td>${p.concurrent_users.toLocaleString()}</td>

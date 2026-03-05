@@ -35,7 +35,7 @@ class RTCConfigGenerator {
 # 客户名称: ${projectInfo.customer_name}
 # 部署类型: ${projectInfo.deployment_type === 'hybrid' ? '混合云' : '纯私有'}
 # 生成时间: ${new Date().toISOString()}
-# 生成方式: AI自动生成 + SA审核
+# 生成方式: 系统生成 + SA审核
 # ============================================
 
 function usage() {
@@ -201,30 +201,152 @@ arb_tag=release-v1_0_3-20250530
 infra_helper_tag=release-v1_1_16-20250826
 web_collector_proxy_tag=release-v1_7_0-20230418
 
-img_local_ap="\\${registry}/agora_local_ap:\\${local_ap_tag}"
-img_local_balancer="\\${registry}/agora_local_balancer:\\${local_balancer_tag}"
-img_vosync="\\${registry}/agora_vosync:\\${vosync_tag}"
-img_cap_sync="\\${registry}/agora_cap_sync:\\${cap_sync_tag}"
-img_web_edge="\\${registry}/agora_web_media_edge:\\${web_edge_tag}"
-img_udp_edge="\\${registry}/agora_udp_media_edge:\\${udp_edge_tag}"
-img_aut_edge="\\${registry}/agora_aut_media_edge:\\${aut_edge_tag}"
-img_event_collector="\\${registry}/agora_event_collector:\\${event_collector_tag}"
-img_arb="\\${registry}/agora_arb:\\${arb_tag}"
-img_infra_helper="\\${registry}/agora_infra_helper:\\${infra_helper_tag}"
-img_web_collector_proxy="\\${registry}/agora_web_collector_proxy:\\${web_collector_proxy_tag}"
+img_local_ap="\${registry}/agora_local_ap:\${local_ap_tag}"
+img_local_balancer="\${registry}/agora_local_balancer:\${local_balancer_tag}"
+img_vosync="\${registry}/agora_vosync:\${vosync_tag}"
+img_cap_sync="\${registry}/agora_cap_sync:\${cap_sync_tag}"
+img_web_edge="\${registry}/agora_web_media_edge:\${web_edge_tag}"
+img_udp_edge="\${registry}/agora_udp_media_edge:\${udp_edge_tag}"
+img_aut_edge="\${registry}/agora_aut_media_edge:\${aut_edge_tag}"
+img_event_collector="\${registry}/agora_event_collector:\${event_collector_tag}"
+img_arb="\${registry}/agora_arb:\${arb_tag}"
+img_infra_helper="\${registry}/agora_infra_helper:\${infra_helper_tag}"
+img_web_collector_proxy="\${registry}/agora_web_collector_proxy:\${web_collector_proxy_tag}"
 
-img_grafana="\\${registry}/grafana:8.2.7"
-img_influxdb="\\${registry}/influxdb:1.8"
-img_cadvisor="\\${registry}/cadvisor:v0.49.1"
-img_netdata="\\${registry}/netdata:v1.33"
+img_grafana="\${registry}/grafana:8.2.7"
+img_influxdb="\${registry}/influxdb:1.8"
+img_cadvisor="\${registry}/cadvisor:v0.49.1"
+img_netdata="\${registry}/netdata:v1.33"
 
 # ============================================
-# 注意: 以下为标准启动函数，通常无需修改
+# 以下为完整管理函数
 # ============================================
-# 完整的启动函数请从标准mgmt.sh模板复制
-# 或联系技术支持获取最新版本
+service_container_name() {
+  local svc="$1"
+  echo "agora_\${svc}"
+}
 
-# TODO: 在实际部署时，需要将标准mgmt.sh的函数部分追加到此文件
+service_image() {
+  local svc="$1"
+  case "$svc" in
+    local_ap) echo "$img_local_ap" ;;
+    local_balancer) echo "$img_local_balancer" ;;
+    vosync) echo "$img_vosync" ;;
+    cap_sync) echo "$img_cap_sync" ;;
+    web_edge) echo "$img_web_edge" ;;
+    udp_edge) echo "$img_udp_edge" ;;
+    aut_edge) echo "$img_aut_edge" ;;
+    event_collector) echo "$img_event_collector" ;;
+    arb) echo "$img_arb" ;;
+    infra_helper) echo "$img_infra_helper" ;;
+    grafana) echo "$img_grafana" ;;
+    influxdb) echo "$img_influxdb" ;;
+    cadvisor) echo "$img_cadvisor" ;;
+    netdata) echo "$img_netdata" ;;
+    *) echo "" ;;
+  esac
+}
+
+run_service() {
+  local svc="$1"
+  local image
+  local cname
+  image="$(service_image "$svc")"
+  cname="$(service_container_name "$svc")"
+  if [ -z "$image" ]; then
+    echo "Unknown service: $svc"
+    return 1
+  fi
+
+  if docker ps -a --format '{{.Names}}' | grep -q "^\${cname}$"; then
+  echo "[INFO] container exists, restarting: \${cname}"
+    docker rm -f "\${cname}" >/dev/null 2>&1 || true
+  fi
+
+  echo "[INFO] starting \${svc} with image \${image}"
+  docker run -d --name "\${cname}" --restart unless-stopped \\
+    --network host \\
+    -v "\${log_path}:/var/log/agora" \\
+    -v "\${data_path}:/data/agora" \\
+    -e LOCAL_IP="\${local_ip}" \\
+    -e AP="\${ap}" \\
+    -e BALANCER="\${balancer}" \\
+    -e SYNC="\${sync}" \\
+    -e EVENT_COLLECTOR="\${event_collector}" \\
+    -e DATAHUB_IP="\${datahub_ip}" \\
+    -e UDP_EDGE_CNT="\${udp_edge_cnt}" \\
+    -e AUT_EDGE_CNT="\${aut_edge_cnt}" \\
+    -e WEB_EDGE_CNT="\${web_edge_cnt}" \\
+    "\${image}"
+}
+
+stop_service() {
+  local svc="$1"
+  local cname
+  cname="$(service_container_name "$svc")"
+  echo "[INFO] stopping \${svc}"
+  docker rm -f "\${cname}" >/dev/null 2>&1 || true
+}
+
+status_service() {
+  local svc="$1"
+  local cname
+  cname="$(service_container_name "$svc")"
+  if docker ps --format '{{.Names}}' | grep -q "^\${cname}$"; then
+    echo "\${svc}: running"
+  else
+    echo "\${svc}: stopped"
+  fi
+}
+
+all_services=(local_ap local_balancer vosync cap_sync event_collector udp_edge aut_edge web_edge arb infra_helper influxdb netdata cadvisor grafana)
+
+start_all() {
+  for s in "\${all_services[@]}"; do
+    run_service "\${s}" || return 1
+  done
+}
+
+stop_all() {
+  for s in "\${all_services[@]}"; do
+    stop_service "\${s}"
+  done
+}
+
+status_all() {
+  for s in "\${all_services[@]}"; do
+    status_service "\${s}"
+  done
+}
+
+main() {
+  local cmd="$1"
+  local svc="$2"
+  case "$cmd" in
+    start)
+      if [ "$svc" = "all" ] || [ -z "$svc" ]; then start_all; else run_service "$svc"; fi
+      ;;
+    stop)
+      if [ "$svc" = "all" ] || [ -z "$svc" ]; then stop_all; else stop_service "$svc"; fi
+      ;;
+    restart)
+      if [ "$svc" = "all" ] || [ -z "$svc" ]; then stop_all && start_all; else stop_service "$svc" && run_service "$svc"; fi
+      ;;
+    status)
+      if [ "$svc" = "all" ] || [ -z "$svc" ]; then status_all; else status_service "$svc"; fi
+      ;;
+    -h|--help|help|"")
+      usage
+      ;;
+    *)
+      echo "Unknown command: $cmd"
+      usage
+      return 1
+      ;;
+  esac
+}
+
+main "$@"
 `;
 
     return config;
@@ -349,6 +471,11 @@ cp tls_cert tls_cert_key web_cert web_cert_key ./agora/
 
 ### 需要开通的端口
 
+${architecture.firewall_rules?.length ? `
+| 源 | 目标 | 协议 | 端口 | 方向 | 用途 |
+|---|---|---|---|---|---|
+${architecture.firewall_rules.map(r => `| ${r.source || '-'} | ${r.destination || '-'} | ${r.protocol || '-'} | ${r.port || '-'} | ${r.direction || '-'} | ${r.purpose || '-'} |`).join('\n')}
+` : `
 | 源 | 目标 | 协议/端口 | 用途 |
 |---|---|---|---|
 | Native SDK | Local AP | TCP/8003, UDP/8004 | SDK接入分配 |
@@ -357,6 +484,7 @@ cp tls_cert tls_cert_key web_cert web_cert_key ./agora/
 | Web SDK | Web Edge | TCP/4500+, UDP/4500+ | WebRTC传输 |
 | SDK | Event Collector | TCP/6443, UDP/4301 | 事件收集 |
 ${projectInfo.deployment_type === 'hybrid' ? `| Edge | Proxy VOS | TCP/5201, UDP/5001 | 混合云通信 |` : ''}
+`}
 
 完整端口清单请参考私有化部署文档。
 
@@ -387,7 +515,7 @@ ${projectInfo.deployment_type === 'hybrid' ? `| Edge | Proxy VOS | TCP/5201, UDP
 
 ${architecture.risks ? architecture.risks.map(r => 
   `### ${r.risk} (${r.severity})\n**缓解措施**: ${r.mitigation}`
-).join('\n\n') : '请参考AI生成的风险评估'}
+).join('\n\n') : '请参考系统生成的风险评估'}
 
 ---
 
@@ -424,7 +552,7 @@ ${architecture.risks ? architecture.risks.map(r =>
 
 - \`mgmt.sh\` - 部署管理脚本（已预配置IP）
 - \`部署文档.md\` - 详细部署指南
-- \`架构方案.json\` - AI生成的架构方案
+- \`架构方案.json\` - 生成的架构方案
 - \`资源清单.txt\` - 资源需求清单
 - \`agora/\` - 配置文件目录（放置证书）
 
@@ -443,16 +571,74 @@ ${architecture.risks ? architecture.risks.map(r =>
   }
 
   /**
+   * 生成防火墙规则文档
+   */
+  generateFirewallDoc(architecture, projectInfo) {
+    const rules = architecture.firewall_rules || [];
+    if (!rules.length) return '';
+
+    const rows = rules.map(r =>
+      `| ${r.source || '-'} | ${r.destination || '-'} | ${r.protocol || '-'} | ${r.port || '-'} | ${r.direction || '-'} | ${r.purpose || '-'} |`
+    ).join('\n');
+
+    return `# ${projectInfo.customer_name} - 防火墙放通规则
+
+| 源 | 目标 | 协议 | 端口 | 方向 | 用途 |
+|---|---|---|---|---|---|
+${rows}
+
+---
+生成时间: ${new Date().toLocaleString('zh-CN')}
+`;
+  }
+
+  /**
+   * 为指定节点生成 mgmt.sh 配置段
+   */
+  generateNodeMgmtSh(nodeConfig, projectInfo) {
+    const vars = nodeConfig.variables || {};
+    const lines = Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n');
+
+    return `#!/bin/bash
+# ============================================
+# RTC私有化部署配置 - ${nodeConfig.hostname || nodeConfig.node_id}
+# ============================================
+# 项目名称: ${projectInfo.project_name}
+# 客户名称: ${projectInfo.customer_name}
+# 节点ID: ${nodeConfig.node_id}
+# 生成时间: ${new Date().toISOString()}
+# ============================================
+
+${lines}
+`;
+  }
+
+  /**
    * 生成所有配置文件
    */
   generateAll(architecture, projectInfo, resourceEstimate) {
-    return {
+    const files = {
       'mgmt.sh': this.generateMgmtSh(architecture, projectInfo),
       '部署文档.md': this.generateDeploymentDoc(architecture, projectInfo, resourceEstimate),
       '架构方案.json': JSON.stringify(architecture, null, 2),
       '资源清单.txt': resourceEstimate ? this.generateResourceList(resourceEstimate) : '',
       'README.md': this.generateReadme(projectInfo, architecture)
     };
+
+    // 防火墙规则文档
+    if (architecture.firewall_rules?.length) {
+      files['防火墙规则.md'] = this.generateFirewallDoc(architecture, projectInfo);
+    }
+
+    // 为每个节点生成独立的 mgmt.sh（如果 AI 提供了 mgmt_configs）
+    if (architecture.mgmt_configs?.length) {
+      for (const nc of architecture.mgmt_configs) {
+        const fileName = `mgmt-${nc.node_id || nc.hostname || 'unknown'}.sh`;
+        files[fileName] = this.generateNodeMgmtSh(nc, projectInfo);
+      }
+    }
+
+    return files;
   }
 
   /**
